@@ -1,0 +1,14 @@
+/ {
+    aliases {
+        // add node aliases here
+    };
+
+    chosen {
+        // add zephyr chosen nodes here
+    };
+};
+
+&pinctrl {
+    // add pinctrl configurations for gpios here
+};
+
