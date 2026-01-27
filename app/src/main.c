@@ -10,6 +10,6 @@ int main(void) {
     k_msleep(500);
     LOG_INF("Hello, Carlson!");
 
-    conn_mgr_connect();
+    // conn_mgr_connect();
     return 0;
 }

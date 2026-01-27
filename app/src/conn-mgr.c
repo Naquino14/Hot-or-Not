@@ -3,6 +3,9 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/wifi_mgmt.h>
+#include <zephyr/shell/shell.h>
+#include <zephyr/net/icmp.h>
+#include <zephyr/net/dns_resolve.h>
 
 // see sample:
 // https://github.com/zephyrproject-rtos/zephyr/blob/main/samples/net/wifi/apsta_mode/src/main.c
@@ -11,10 +14,10 @@ LOG_MODULE_REGISTER(conn_mgr);
 
 #define MACSTR "%02X:%02X:%02X:%02X:%02X:%02X"
 
-#define NET_EVENT_WIFI_MASK                                                   \
-	    (NET_EVENT_WIFI_CONNECT_RESULT | NET_EVENT_WIFI_DISCONNECT_RESULT |   \
-	    NET_EVENT_WIFI_AP_ENABLE_RESULT | NET_EVENT_WIFI_AP_DISABLE_RESULT |  \
-	    NET_EVENT_WIFI_AP_STA_CONNECTED | NET_EVENT_WIFI_AP_STA_DISCONNECTED)
+#define NET_EVENT_WIFI_MASK                                                    \
+	    (NET_EVENT_WIFI_CONNECT_RESULT   | NET_EVENT_WIFI_DISCONNECT_RESULT |  \
+	     NET_EVENT_WIFI_AP_ENABLE_RESULT | NET_EVENT_WIFI_AP_DISABLE_RESULT |  \
+	     NET_EVENT_WIFI_AP_STA_CONNECTED | NET_EVENT_WIFI_AP_STA_DISCONNECTED)
 
 // configs for wifi station mode
 static struct net_if *sta_iface;
@@ -48,6 +51,13 @@ BUILD_ASSERT(sizeof(CONFIG_WIFI_SSID) > 1,
                 
                 
 static bool initd = false;
+static bool connectd = false;
+
+int cmd_conn_mgr_connect(const struct shell* sh, size_t argc, char** argv) {
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+    return conn_mgr_connect();
+}
 
 int conn_mgr_connect() {
     if (!initd) {
@@ -92,5 +102,39 @@ int conn_mgr_connect() {
         LOG_ERR("Connection to SSID %s failed with code %d.", CONFIG_WIFI_SSID, ret);
     }
 
+    // success
+    connectd = true;
+
     return ret;
 }
+
+int cmd_conn_mgr_disconnect(const struct shell* sh, size_t argc, char** argv) {
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+    return conn_mgr_disconnect();
+}
+
+int conn_mgr_disconnect() {
+    if (!connectd) {
+        LOG_WRN("Not connected, cannot disconnect.");
+        return -ENOTCONN;
+    }
+
+    int ret = net_mgmt(NET_REQUEST_WIFI_DISCONNECT, sta_iface, NULL, 0);
+
+    if (ret < 0) {
+        LOG_ERR("Disconnection failed with code %d.", ret);
+    } else {
+        connectd = false;
+    }
+
+    return ret;
+}
+
+SHELL_STATIC_SUBCMD_SET_CREATE(sub_conn_mgr,
+    SHELL_CMD(connect, NULL, "Initialize if needed and connect to configured WiFi Network", cmd_conn_mgr_connect),
+    SHELL_CMD(disconnect, NULL, "Disconnect from the WiFi Network", cmd_conn_mgr_disconnect),
+    SHELL_SUBCMD_SET_END
+);
+
+SHELL_CMD_REGISTER(conn_mgr, &sub_conn_mgr, "Connection Manager commands", NULL);
