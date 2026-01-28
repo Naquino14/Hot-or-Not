@@ -4,4 +4,7 @@ Next, with the zephyrproject venv activated clone the repository, cd into the fo
 - `west init -l app/`
 - `west update`
 - `west blobs fetch hal-espressif`
-Now you are good to go. Plug in your board, run `make` to build and `make flash` to flash the board.
+
+Now you are good to go. Plug in your board, run `make menuconfig` to set the WiFi SSID then `make` to build.
+
+Once the build is finished, run `make flash` to flsah the code and `make mon` to connect to the serial port (requires [minicom](https://salsa.debian.org/minicom-team/minicom)). 
