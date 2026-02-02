@@ -7,6 +7,7 @@
 #include <zephyr/net/icmp.h>
 #include <zephyr/net/dns_resolve.h>
 #include <zephyr/net/icmp.h>
+#include <zephyr/net/dns_resolve.h>
 
 // see sample:
 // https://github.com/zephyrproject-rtos/zephyr/blob/main/samples/net/wifi/apsta_mode/src/main.c
@@ -19,6 +20,8 @@ LOG_MODULE_REGISTER(conn_mgr);
 	    (NET_EVENT_WIFI_CONNECT_RESULT   | NET_EVENT_WIFI_DISCONNECT_RESULT |  \
 	     NET_EVENT_WIFI_AP_ENABLE_RESULT | NET_EVENT_WIFI_AP_DISABLE_RESULT |  \
 	     NET_EVENT_WIFI_AP_STA_CONNECTED | NET_EVENT_WIFI_AP_STA_DISCONNECTED)
+
+#define DNS_TIMEOUT_MS 2000
 
 // configs for wifi station mode
 static struct net_if *sta_iface;
@@ -125,7 +128,7 @@ int conn_mgr_connect() {
     return ret;
 }
 
-int cmd_conn_mgr_disconnect(const struct shell* sh, size_t argc, char** argv) {
+static int cmd_conn_mgr_disconnect(const struct shell* sh, size_t argc, char** argv) {
     ARG_UNUSED(argc);
     ARG_UNUSED(argv);
     return conn_mgr_disconnect();
@@ -157,6 +160,71 @@ bool conn_mgr_is_connected() {
     return connected;
 }
 
+static void dns_result_cb(enum dns_resolve_status status, struct dns_addrinfo *info, void* user_data) {
+    char hr_addr[NET_IPV4_ADDR_LEN];
+    char* hr_family;
+    void* addr;
+
+    switch (status) {
+        case DNS_EAI_CANCELED:
+            LOG_INF("DNS Query Cancelled");
+            return;
+        case DNS_EAI_FAIL:
+            LOG_ERR("DNS Resolve Failed");
+            return;
+        case DNS_EAI_NODATA:
+            LOG_ERR("DNS Cannot Resolve Address");
+            return;
+        case DNS_EAI_ALLDONE:
+            LOG_INF("DNS Resolution Done");
+            return;
+        case DNS_EAI_INPROGRESS:
+            LOG_INF("DNS Resolution in progress...");
+            break;
+        default:
+            LOG_ERR("DNS Resolution error (%d)", status);
+            return;
+    }
+
+    if (!info)
+        return;
+
+    if (info->ai_family == NET_AF_INET) { // ipv4
+        hr_family = "IPv4";
+        addr = &net_sin(&info->ai_addr)->sin_addr;
+    } else if (info->ai_family == NET_AF_INET6) { // ipv6
+        hr_family = "IPv6";
+        addr = &net_sin6(&info->ai_addr)->sin6_addr;
+    } else {
+        LOG_ERR("Invalid IP AF (%d)", info->ai_family);
+        return;
+    }
+    net_addr_ntop(info->ai_family, addr, hr_addr, sizeof(hr_addr));
+    LOG_INF("DNS Resolver found address %s", hr_addr);
+
+    if (user_data != NULL) 
+        ((conn_mgr_dns_query_callback_t)user_data)(hr_addr);
+}
+
+int conn_mgr_dns_query(const char* hostname, conn_mgr_dns_query_callback_t cb) {
+    // ipv4 only for now?
+
+    uint16_t dns_id;
+    int ret = dns_get_addr_info(hostname, 
+                                DNS_QUERY_TYPE_A,
+                                &dns_id,
+                                dns_result_cb,
+                                (void*)cb,
+                                DNS_TIMEOUT_MS);
+    
+    if (ret < 0) {
+        LOG_ERR("Cannot resolve IPv4 address (%d)", ret);
+        return ret;
+    }
+
+    return 0;
+}
+
 static void ping_cleanup() {
     // cleanup ctx and release semaphore to re-enable pings
     net_icmp_cleanup_ctx(&icmp_ctx);
@@ -181,24 +249,21 @@ static int net_icmp_reply_handler_cb(struct net_icmp_ctx *ctx,
     return 0;
 }
 
-int conn_mgr_ping_host(const char* hostname, conn_mgr_ping_callback_t cb) {
+int conn_mgr_ping_host(const char* ip, conn_mgr_ping_callback_t cb) {
     if (!initd || !connected) {
-        LOG_ERR("Cannot ping %s if not connected to a network or initialized!", hostname);
+        LOG_ERR("Cannot ping %s if not connected to a network or initialized!", ip);
         return -ENOTSUP;
     }
 
-    LOG_INF("Pinging host %s", hostname);
-
-    // test ip, query dns later
-    const char* ip = "1.1.1.1";
-    
     // take sem so only 1 ping is allowed at a time
     int ret = k_sem_take(&ping_sem, K_NO_WAIT);
     if (ret == -EBUSY) {
         LOG_ERR("conn_mgr_ping_host called when ping was in progress.");
         return ret;
     }
-
+    
+    LOG_INF("Pinging host %s", ip);
+    
     // init ping tracker struct. Use NET_ICMPV4_ECHO_REPLY because thats the message we are expecting back.
     ret = net_icmp_init_ctx(&icmp_ctx, NET_AF_INET, NET_ICMPV4_ECHO_REPLY, 0, net_icmp_reply_handler_cb);
     if (ret < 0) {
@@ -222,12 +287,12 @@ int conn_mgr_ping_host(const char* hostname, conn_mgr_ping_callback_t cb) {
     // send ping, and supply our callback as an extra param
     ret = net_icmp_send_echo_request(&icmp_ctx, sta_iface, (struct net_sockaddr*)&ipv4_destination, NULL, (void*)cb);
     if (ret < 0) {
-        LOG_ERR("Sending ICMP Echo request to %s failed (%d)", hostname, ret);
+        LOG_ERR("Sending ICMP Echo request to %s failed (%d)", ip, ret);
         ping_cleanup();
         return ret;
     }
 
-    LOG_INF("ICMP Echo request sent to %s", hostname);
+    LOG_INF("ICMP Echo request sent to %s", ip);
 
     return 0;
 }

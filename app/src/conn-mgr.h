@@ -26,6 +26,10 @@ int conn_mgr_disconnect();
  */
 bool conn_mgr_is_connected();
 
+typedef void (*conn_mgr_dns_query_callback_t)(char* resolved_ip);
+
+int conn_mgr_dns_query(const char* hostname, conn_mgr_dns_query_callback_t cb);
+
 /**
  * @typedef conn_mgr_ping_callback_t
  * @brief Callback function describing the status of a ping
@@ -34,10 +38,10 @@ typedef void (*conn_mgr_ping_callback_t)(int code);
 
 /**
  * @brief Send an ICMP echo request to `hostname`.
- * @param hostname The hostname to ping.
+ * @param ip The IP to ping.
  * @param cb Pointer to a callback function that will be called when a response is received.
  * @returns 0 on success, negative error code on failure.
  */
-int conn_mgr_ping_host(const char* hostname, conn_mgr_ping_callback_t cb);
+int conn_mgr_ping_host(const char* ip, conn_mgr_ping_callback_t cb);
 
 #endif // CONN_MGR_H
