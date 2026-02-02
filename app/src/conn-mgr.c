@@ -108,7 +108,7 @@ int conn_mgr_connect() {
     
 #if defined(CONFIG_WIFI_PSK)
     if (sizeof(CONFIG_WIFI_PSK) > 1) {
-        sta_wifi_config.psk = (const uint8_t*) CODE_UNREACHABLE
+        sta_wifi_config.psk = (const uint8_t*);
         sta_wifi_config.psk_length = sizeof(CONFIG_WIFI_PSK);
     }
 #endif  
