@@ -26,11 +26,14 @@ void ping_cb(int code) {
 static bool dns_query_ok = false;
 static char found_ip[MAX_IP_STR];
 void query_cb(char* resolved_ip) {
-    int len = strnlen(resolved_ip, MAX_IP_STR - 1);
-    memcpy(found_ip, resolved_ip, len);
-    found_ip[len] = '\0';
-    LOG_INF("DNS Query successful! Resolved IP: %s", found_ip);
-    dns_query_ok = true;
+    if (!dns_query_ok) {
+        int len = strnlen(resolved_ip, MAX_IP_STR - 1);
+        memcpy(found_ip, resolved_ip, len);
+        found_ip[len] = '\0';
+        LOG_INF("DNS Query successful! Resolved IP: %s", found_ip);
+        dns_query_ok = true;
+    } else
+        LOG_WRN("Ignoring duplicate DNS response.");
 }
 
 int main(void) {
