@@ -206,6 +206,14 @@ static void dns_result_cb(enum dns_resolve_status status, struct dns_addrinfo *i
         ((conn_mgr_dns_query_callback_t)user_data)(hr_addr);
 }
 
+static int cmd_conn_mgr_dns_query(const struct shell* sh, size_t argc, char** argv) {
+    if (argc < 2) {
+        shell_print(sh, "Usage: conn_mgr dns_query <hostname>");
+        return -EINVAL;
+    }
+    return conn_mgr_dns_query(argv[1], NULL);
+}
+
 int conn_mgr_dns_query(const char* hostname, conn_mgr_dns_query_callback_t cb) {
     // ipv4 only for now?
 
@@ -301,6 +309,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_conn_mgr,
     SHELL_CMD(connect, NULL, "Initialize if needed and connect to configured WiFi Network", cmd_conn_mgr_connect),
     SHELL_CMD(disconnect, NULL, "Disconnect from the WiFi Network", cmd_conn_mgr_disconnect),
     SHELL_CMD(is_connected, NULL, "Check if currently connected to a WiFi network", cmd_is_connected),
+    SHELL_CMD(dns_query, NULL, "Perform a DNS query for the given hostname", cmd_conn_mgr_dns_query),
     SHELL_SUBCMD_SET_END
 );
 
