@@ -1,3 +1,6 @@
+// For the AM2320 T&H sensor see
+// https://cdn-shop.adafruit.com/product-files/3721/AM2320.pdf
+
 / {
     aliases {
         // add node aliases here
@@ -8,7 +11,23 @@
     };
 };
 
+// add pinctrl configurations for gpios here
 &pinctrl {
-    // add pinctrl configurations for gpios here
+    i2c0_default: i2c0_default {
+        group1 {
+            pinmux = <I2C0_SDA_GPIO4>,
+                <I2C0_SCL_GPIO2>;
+            // datasheet specifies both pins need pullup
+            bias-pull-up;
+            output-high;
+            drive-open-drain;
+        };
+    };
 };
 
+&i2c0 {
+    status = "okay";
+    clock-frequency = <I2C_BITRATE_STANDARD>; // do not exceed this speed
+    pinctrl-0 = <&i2c0_default>;
+    pinctrl-names = "default";
+};
