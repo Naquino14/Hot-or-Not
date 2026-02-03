@@ -53,7 +53,7 @@ int main(void) {
     while (!conn_mgr_is_connected() && attempt < max_retries) {
         int ret = conn_mgr_connect();
         if (ret < 0)            
-            LOG_ERR("Connection attempt failed with code %d", ret);
+            LOG_WRN("Connection attempt failed with code %d", ret);
 
         LOG_INF("Waiting for connection... (attempt %d/%d)", attempt + 1, max_retries);
         k_msleep(timeout_ms / max_retries);
