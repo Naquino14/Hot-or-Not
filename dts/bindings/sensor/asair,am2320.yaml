@@ -1,0 +1,7 @@
+description: | 
+    The ASAIR AM2320 is a combined temperature and humidity sensor with an I2C interface.
+
+compatible: "asair,am2320"
+
+include: [sensor-device.yaml, i2c-device.yaml]
+
