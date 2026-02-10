@@ -1,8 +1,8 @@
 # Getting started with development
 First, follow the [Zephyr Getting Started Guide](https://docs.zephyrproject.org/latest/develop/getting_started/index.html).
 Next, with the zephyrproject venv activated clone the repository, cd into the folder it created, and run the following (note it may take a while for the commands to finish executing):
-- `west init -l app/`
-- `west update`
+- `west init -m git@github.com:naquino14/Hot-or-Not --mr master zephyr-workspace`
+- `cd hot-or-not && west update`
 - `west blobs fetch hal_espressif`
 
 Now you are good to go. Plug in your board, run `make menuconfig` to set the WiFi SSID then `make` to build.
