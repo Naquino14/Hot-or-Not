@@ -27,6 +27,9 @@ void ping_cb(int code) {
 #define WIFI_CONNECT_TIMEOUT_MS 10000
 #define WIFI_CONNECT_MAX_RETRIES 3
 
+#define AM2320_NODE DT_ALIAS(tnh_sensor)
+static const struct device * dev_tnh = DEVICE_DT_GET(AM2320_NODE);
+
 static bool dns_query_ok = false;
 static char found_ip[MAX_IP_STR];
 void query_cb(char* resolved_ip) {
@@ -95,6 +98,15 @@ int main(void) {
     }
 
     LOG_INF("Network tests OK");
+
+    k_msleep(500);
+
+    LOG_INF("Checking am2320 sensor...");
+
+    if (!device_is_ready(dev_tnh)) {
+        LOG_ERR("AM2320 sensor device not ready");
+        return -1;
+    }
 
     return 0;
 }
