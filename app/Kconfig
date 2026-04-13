@@ -9,6 +9,12 @@ config WIFI_SECURITY
     help
         "see zephyr/net/wifi.h enum wifi_security_type. Default 0 (no security)"
 
+config WIFI_PSK
+    string "WiFi password"
+    depends on WIFI_SECURITY != 0
+    help
+        The WiFi password that the board will use to connect to the WiFi network.
+
 menu "Zephyr Kernel"
 source "Kconfig.zephyr"
 endmenu

@@ -41,8 +41,15 @@ static bool connected = false;
 static void wifi_event_handler(struct net_mgmt_event_callback *cb, uint64_t event_code, struct net_if *iface) {
     switch (event_code) {
         case NET_EVENT_WIFI_CONNECT_RESULT:
-            LOG_INF("WiFi connected");
-            connected = true;
+            const struct wifi_status *status = (const struct wifi_status *)cb->info;
+            if (status && status->status) {
+                LOG_ERR("WiFi connection failed with status %d", status->status);
+                connected = false;
+                break;
+            } else {
+                LOG_INF("WiFi connected");
+                connected = true;
+            }
             break;
         case NET_EVENT_WIFI_DISCONNECT_RESULT:
             LOG_INF("WiFi disconnected");
@@ -108,7 +115,7 @@ int conn_mgr_connect() {
     
 #if defined(CONFIG_WIFI_PSK)
     if (sizeof(CONFIG_WIFI_PSK) > 1) {
-        sta_wifi_config.psk = (const uint8_t*);
+        sta_wifi_config.psk = (const uint8_t*)CONFIG_WIFI_PSK;
         sta_wifi_config.psk_length = sizeof(CONFIG_WIFI_PSK);
     }
 #endif  

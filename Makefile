@@ -3,9 +3,10 @@ BAUDRATE := 115200
 
 export BOARD := esp32_devkitc/esp32/procpu
 export DTC_OVERLAY_FILE := $(CWD)/app/boards/esp32_devkitc.overlay
+export SECRETS_FILE := $(CWD)/app/secrets.conf
 
 target:
-	west build -b $(BOARD) -s app -p auto
+	west build -b $(BOARD) -s app -p auto -- -DEXTRA_CONF_FILE=$(SECRETS_FILE)
 
 flash:
 	west flash --esp-device /dev/ttyUSB0
