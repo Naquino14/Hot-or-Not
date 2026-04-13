@@ -8,6 +8,10 @@
 
 LOG_MODULE_REGISTER(main);
 
+// get am2320 device
+#define TANDH_NODE DT_ALIAS(tandh)
+const struct device* dev_tandh = DEVICE_DT_GET(TANDH_NODE);
+
 // ping callback
 static bool inet_ok = false;
 void ping_cb(int code) {
@@ -95,6 +99,13 @@ int main(void) {
     }
 
     LOG_INF("Network tests OK");
+    
+    k_msleep(100);
+
+    if (!device_is_ready(dev_tandh)) {
+        LOG_ERR("Ah breh ts dont work");
+        return 1;
+    }
 
     return 0;
 }
