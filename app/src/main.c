@@ -3,6 +3,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/net/icmp.h>
 #include <string.h>
+#include <zephyr/drivers/sensor.h>
 
 #include "conn-mgr.h"
 
@@ -105,6 +106,23 @@ int main(void) {
     if (!device_is_ready(dev_tandh)) {
         LOG_ERR("Ah breh ts dont work");
         return 1;
+    } else {
+        LOG_INF("Found temperature and humidity sensor!");
+    }
+
+    int temp = -1;
+    int humid = -1;
+
+    int ret = sensor_sample_fetch_chan(dev_tandh, SENSOR_CHAN_AMBIENT_TEMP);
+    if (ret < 0) {
+        LOG_ERR("Get ambient temp failed: %d", ret);
+        return ret;
+    }
+    
+    ret = sensor_sample_fetch_chan(dev_tandh, SENSOR_CHAN_HUMIDITY);
+    if (ret < 0) {
+        LOG_ERR("Get humidity failed: %d", ret);
+        return ret;
     }
 
     return 0;
