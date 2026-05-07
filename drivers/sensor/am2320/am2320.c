@@ -20,7 +20,7 @@ struct am2320_data {
     int16_t temp_c_tenths;
 
     /// @brief Humidity Percentage
-    uint16_t humid_p;
+    uint16_t humid_p_tenths;
 };
 
 static int am2320_sensor_sample_fetch(const struct device* dev, enum sensor_channel chan) {
@@ -36,14 +36,18 @@ static int am2320_sensor_sample_fetch(const struct device* dev, enum sensor_chan
     int ret;
     uint8_t request_frame[3]; // [function code, high register addr, 2 bytes]
     uint8_t response_frame[6]; // [function code, 2 bytes, high value, low value, high crc, low crc]
+
+    request_frame[0] = AM2320_FC_READ_REG;
+    request_frame[2] = 2;
+
+    uint16_t crc_calc;
+    uint16_t crc_recv;
     switch (chan) {
         case SENSOR_CHAN_AMBIENT_TEMP:
             LOG_DBG("temperature sample fetch");
 
             // send request for temperature
-            request_frame[0] = AM2320_FC_READ_REG;
             request_frame[1] = AM2320_REG_TEMPERATURE_HIGH;
-            request_frame[2] = 2;
             ret = i2c_write_dt(&cfg->i2c, request_frame, sizeof(request_frame));
             if (ret < 0) {
                 LOG_ERR("Failed to request temperature register values: IO error.");
@@ -57,13 +61,13 @@ static int am2320_sensor_sample_fetch(const struct device* dev, enum sensor_chan
                 LOG_ERR("Failed to read temperature register values: IO error.");
                 return -EIO;
             } else if (response_frame[0] != AM2320_FC_READ_REG || response_frame[1] != 2) {
-                LOG_ERR("Bad response header: fc=0x%02x len=%u", response_frame[0], response_frame[1]);
+                LOG_ERR("Bad temperature response header: fc=0x%02x len=%u", response_frame[0], response_frame[1]);
                 return -EIO;
             }
 
             // TODO: Make CRC optional
-            uint16_t crc_calc = crc16_ansi(response_frame, sizeof(response_frame) - 2);
-            uint16_t crc_recv = (response_frame[5] << 8) | response_frame[4];
+            crc_calc = crc16_ansi(response_frame, sizeof(response_frame) - 2);
+            crc_recv = (response_frame[5] << 8) | response_frame[4];
             if (crc_calc != crc_recv) {
                 LOG_ERR("CRC check failed: calc=0x%04x recv=0x%04x", crc_calc, crc_recv);
                 return -EAGAIN;
@@ -75,8 +79,37 @@ static int am2320_sensor_sample_fetch(const struct device* dev, enum sensor_chan
             
             break;
         case SENSOR_CHAN_HUMIDITY:
-            LOG_DBG("Debug: humidity sample fetch");
-            data->humid_p = 50;
+            LOG_DBG("humidity sample fetch");
+
+            // send request for humidity
+            request_frame[1] = AM2320_REG_HUMIDITY_HIGH;
+            ret = i2c_write_dt(&cfg->i2c, request_frame, sizeof(request_frame));
+            if (ret < 0) {
+                LOG_ERR("Failed to request humidity register values: IO error.");
+                return -EIO;
+            }
+            k_sleep(AM2320_REQUEST_DELAY);
+
+            // read humidity
+            ret = i2c_read_dt(&cfg->i2c, response_frame, sizeof(response_frame));
+            if (ret < 0) {
+                LOG_ERR("Failed to read humidity register values: IO error.");
+                return -EIO;
+            } else if (response_frame[0] != AM2320_FC_READ_REG || response_frame[1] != 2) {
+                LOG_ERR("Bad humidity response header: fc=0x%02x len=%u", response_frame[0], response_frame[1]);
+                return -EAGAIN;
+            }
+
+            // TODO: Make CRC optional
+            crc_calc = crc16_ansi(response_frame, sizeof(response_frame) - 2);
+            crc_recv = (response_frame[5] << 8) | response_frame[4];
+            if (crc_calc != crc_recv) {
+                LOG_ERR("CRC check failed: calc=0x%04x recv=0x%04x", crc_calc, crc_recv);
+                return -EAGAIN;
+            }
+
+            data->humid_p_tenths = (response_frame[2] << 8) | response_frame[3];
+
             break;
         default:
             LOG_ERR("Channel not supported.");
@@ -94,11 +127,13 @@ static int am2320_sensor_channel_get(const struct device* dev, enum sensor_chann
     switch (chan) {
         case SENSOR_CHAN_AMBIENT_TEMP:
             LOG_DBG("temperature get");
-            val->val1 = data->temp_c_tenths;
+            val->val1 = data->temp_c_tenths / 10;
+            val->val2 = data->temp_c_tenths % 10;
             break;
         case SENSOR_CHAN_HUMIDITY:
             LOG_DBG("humidity get");
-            val->val1 = data->humid_p;
+            val->val1 = data->humid_p_tenths / 10;
+            val->val2 = data->humid_p_tenths % 10;
             break;
         default:
             LOG_ERR("Channel not supported.");

@@ -112,18 +112,22 @@ int main(void) {
 
     for (;;) {
         double temp = -1;
-        int humid = -1;
+        double humid = -1;
+
+        k_sleep(K_SECONDS(10));
 
         int ret = sensor_sample_fetch_chan(dev_tandh, SENSOR_CHAN_AMBIENT_TEMP);
         if (ret < 0) {
             LOG_ERR("Get ambient temp failed: %d", ret);
-            return ret;
+            continue;
         }
+
+        k_msleep(2000);
 
         ret = sensor_sample_fetch_chan(dev_tandh, SENSOR_CHAN_HUMIDITY);
         if (ret < 0) {
             LOG_ERR("Get humidity failed: %d", ret);
-            return ret;
+            continue;
         }
 
         k_msleep(100);
@@ -132,22 +136,21 @@ int main(void) {
         ret = sensor_channel_get(dev_tandh, SENSOR_CHAN_AMBIENT_TEMP, &temp_val);
         if (ret < 0) {
             LOG_ERR("Get ambient temp failed: %d", ret); 
-            return ret;
+            continue;
         }
-        temp = temp_val.val1;
-        temp /= 10;
+        temp = temp_val.val1 + temp_val.val2 / 10.0;
 
         struct sensor_value humid_val;
         ret = sensor_channel_get(dev_tandh, SENSOR_CHAN_HUMIDITY, &humid_val);
         if (ret < 0) {  
             LOG_ERR("Get humidity failed: %d", ret); 
-            return ret;
+            continue;
         }
-        humid = humid_val.val1;
+        humid = humid_val.val1 + humid_val.val2 / 10.0;
 
-        LOG_INF("Temperature: %.1f C, Humidity: %d", temp, humid);
+        double temp_f = temp * 9 / 5 + 32;
 
-        k_sleep(K_SECONDS(10));
+        LOG_INF("Temperature: %.1f C (%.1f F), Humidity: %.1f %%", temp, temp_f, humid);
     }
 
     return 0;
