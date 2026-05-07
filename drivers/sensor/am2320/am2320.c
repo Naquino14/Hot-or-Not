@@ -6,10 +6,10 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/crc.h>
 #include <stdint.h>
 
-LOG_MODULE_REGISTER(am2320);
-
+LOG_MODULE_REGISTER(am2320, LOG_LEVEL_ERR);
 
 struct am2320_config {
     const struct i2c_dt_spec i2c;
@@ -17,7 +17,7 @@ struct am2320_config {
 
 struct am2320_data {
     /// @brief Temperature in Degrees Celcius
-    int16_t temp_c;
+    int16_t temp_c_tenths;
 
     /// @brief Humidity Percentage
     uint16_t humid_p;
@@ -25,14 +25,57 @@ struct am2320_data {
 
 static int am2320_sensor_sample_fetch(const struct device* dev, enum sensor_channel chan) {
     struct am2320_data* data = dev->data;
+    const struct am2320_config* cfg = dev->config;
 
+    // AM2320 needs to wake up before its used. 
+    // Ignore ret
+    uint8_t wakeywakey = 0x67;
+    (void)i2c_write_dt(&cfg->i2c, &wakeywakey, 1);
+    k_sleep(AM2320_WAKE_DELAY);
+
+    int ret;
+    uint8_t request_frame[3]; // [function code, high register addr, 2 bytes]
+    uint8_t response_frame[6]; // [function code, 2 bytes, high value, low value, high crc, low crc]
     switch (chan) {
         case SENSOR_CHAN_AMBIENT_TEMP:
-            LOG_INF("Debug: temperature sample fetch");
-            data->temp_c = 21; 
+            LOG_DBG("temperature sample fetch");
+
+            // send request for temperature
+            request_frame[0] = AM2320_FC_READ_REG;
+            request_frame[1] = AM2320_REG_TEMPERATURE_HIGH;
+            request_frame[2] = 2;
+            ret = i2c_write_dt(&cfg->i2c, request_frame, sizeof(request_frame));
+            if (ret < 0) {
+                LOG_ERR("Failed to request temperature register values: IO error.");
+                return -EIO;
+            }
+            k_sleep(AM2320_REQUEST_DELAY);
+
+            // read temperature
+            ret = i2c_read_dt(&cfg->i2c, response_frame, sizeof(response_frame));
+            if (ret < 0) {
+                LOG_ERR("Failed to read temperature register values: IO error.");
+                return -EIO;
+            } else if (response_frame[0] != AM2320_FC_READ_REG || response_frame[1] != 2) {
+                LOG_ERR("Bad response header: fc=0x%02x len=%u", response_frame[0], response_frame[1]);
+                return -EIO;
+            }
+
+            // TODO: Make CRC optional
+            uint16_t crc_calc = crc16_ansi(response_frame, sizeof(response_frame) - 2);
+            uint16_t crc_recv = (response_frame[5] << 8) | response_frame[4];
+            if (crc_calc != crc_recv) {
+                LOG_ERR("CRC check failed: calc=0x%04x recv=0x%04x", crc_calc, crc_recv);
+                return -EAGAIN;
+            }
+            uint16_t raw = (response_frame[2] << 8) | response_frame[3];
+            bool sign = raw & 0x8000;
+            raw &= ~0x8000;
+            data->temp_c_tenths = (sign ? -raw : raw);
+            
             break;
         case SENSOR_CHAN_HUMIDITY:
-            LOG_INF("Debug: humidity sample fetch");
+            LOG_DBG("Debug: humidity sample fetch");
             data->humid_p = 50;
             break;
         default:
@@ -50,11 +93,11 @@ static int am2320_sensor_channel_get(const struct device* dev, enum sensor_chann
 
     switch (chan) {
         case SENSOR_CHAN_AMBIENT_TEMP:
-            LOG_INF("Debug: temperature fetch");
-            val->val1 = data->temp_c;
+            LOG_DBG("temperature get");
+            val->val1 = data->temp_c_tenths;
             break;
         case SENSOR_CHAN_HUMIDITY:
-            LOG_INF("Debug: humidity fetch");
+            LOG_DBG("humidity get");
             val->val1 = data->humid_p;
             break;
         default:
@@ -71,6 +114,13 @@ static const struct sensor_driver_api am2320_api = {
 };
 
 static int am2320_init(const struct device* dev) {
+    const struct am2320_config* cfg = dev->config;
+
+    if (!i2c_is_ready_dt(&cfg->i2c)) {
+        LOG_ERR("I2C bus not ready");
+        return -ENODEV;
+    }
+
     LOG_INF("am2320 init");
     return 0;
 }

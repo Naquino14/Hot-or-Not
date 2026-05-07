@@ -26,7 +26,7 @@ void ping_cb(int code) {
 
 
 #define MAX_IP_STR 16
-#define DNS_QUERY_TIMEOUT_MS 5000
+#define DNS_QUERY_TIMEOUT_MS 12000
 #define DNS_QUERY_MAX_RETRIES 5
 
 #define WIFI_CONNECT_TIMEOUT_MS 10000
@@ -110,19 +110,44 @@ int main(void) {
         LOG_INF("Found temperature and humidity sensor!");
     }
 
-    int temp = -1;
-    int humid = -1;
+    for (;;) {
+        double temp = -1;
+        int humid = -1;
 
-    int ret = sensor_sample_fetch_chan(dev_tandh, SENSOR_CHAN_AMBIENT_TEMP);
-    if (ret < 0) {
-        LOG_ERR("Get ambient temp failed: %d", ret);
-        return ret;
-    }
-    
-    ret = sensor_sample_fetch_chan(dev_tandh, SENSOR_CHAN_HUMIDITY);
-    if (ret < 0) {
-        LOG_ERR("Get humidity failed: %d", ret);
-        return ret;
+        int ret = sensor_sample_fetch_chan(dev_tandh, SENSOR_CHAN_AMBIENT_TEMP);
+        if (ret < 0) {
+            LOG_ERR("Get ambient temp failed: %d", ret);
+            return ret;
+        }
+
+        ret = sensor_sample_fetch_chan(dev_tandh, SENSOR_CHAN_HUMIDITY);
+        if (ret < 0) {
+            LOG_ERR("Get humidity failed: %d", ret);
+            return ret;
+        }
+
+        k_msleep(100);
+
+        struct sensor_value temp_val;
+        ret = sensor_channel_get(dev_tandh, SENSOR_CHAN_AMBIENT_TEMP, &temp_val);
+        if (ret < 0) {
+            LOG_ERR("Get ambient temp failed: %d", ret); 
+            return ret;
+        }
+        temp = temp_val.val1;
+        temp /= 10;
+
+        struct sensor_value humid_val;
+        ret = sensor_channel_get(dev_tandh, SENSOR_CHAN_HUMIDITY, &humid_val);
+        if (ret < 0) {  
+            LOG_ERR("Get humidity failed: %d", ret); 
+            return ret;
+        }
+        humid = humid_val.val1;
+
+        LOG_INF("Temperature: %.1f C, Humidity: %d", temp, humid);
+
+        k_sleep(K_SECONDS(10));
     }
 
     return 0;

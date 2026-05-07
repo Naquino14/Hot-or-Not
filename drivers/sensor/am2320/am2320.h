@@ -4,6 +4,11 @@
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/drivers/i2c.h>
 
+/// Wake time delay >= 800 us
+#define AM2320_WAKE_DELAY K_USEC(2000)
+/// Request time delay >= 1.5 ms
+#define AM2320_REQUEST_DELAY K_USEC(1800)
+
 /// Read one or more registers
 #define AM2320_FC_READ_REG 0x03
 /// Multiple sets of binary data to write to multiple registers 
