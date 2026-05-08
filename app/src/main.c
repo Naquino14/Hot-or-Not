@@ -101,8 +101,6 @@ int main(void) {
 
     LOG_INF("Network tests OK");
     
-    k_msleep(100);
-
     if (!device_is_ready(dev_tandh)) {
         LOG_ERR("Ah breh ts dont work");
         return 1;
