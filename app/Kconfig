@@ -27,6 +27,11 @@ config SENSOR_READ_ALL_CHANNELS
     help
         If enabled, the driver will read both temperature and humidity channels in a single I2C transaction (faster). 
 
+config SMTP_SECRET
+    string "SMTP password for sending emails"
+    help
+        The SMTP password that the board will use to send emails via SMTP.
+
 menu "Zephyr Kernel"
 source "Kconfig.zephyr"
 endmenu
