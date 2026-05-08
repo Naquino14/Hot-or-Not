@@ -3,3 +3,8 @@ config AM2320
     default y
     select I2C
     
+config AM2320_DO_CRC
+    bool "Enable CRC check for AM2320 sensor readings"
+    default y
+    help
+        If enabled, the driver will perform a CRC check on the sensor readings to verify data integrity.

@@ -23,6 +23,22 @@ struct am2320_data {
     uint16_t humid_p_tenths;
 };
 
+static bool am2320_crc_ok(const uint8_t *response_frame, size_t frame_len) {
+#ifndef CONFIG_AM2320_DO_CRC
+    ARG_UNUSED(response_frame);
+    ARG_UNUSED(frame_len);
+    return true;
+#else
+    uint16_t crc_calc = crc16_ansi(response_frame, frame_len - 2);
+    uint16_t crc_recv = ((uint16_t)response_frame[frame_len - 1] << 8) | response_frame[frame_len - 2];
+    if (crc_calc != crc_recv) {
+        LOG_ERR("CRC check failed: calc=0x%04x recv=0x%04x", crc_calc, crc_recv);
+        return false;
+    }
+    return true;
+#endif
+}
+
 static int am2320_sensor_sample_fetch(const struct device* dev, enum sensor_channel chan) {
     struct am2320_data* data = dev->data;
     const struct am2320_config* cfg = dev->config;
@@ -41,8 +57,6 @@ static int am2320_sensor_sample_fetch(const struct device* dev, enum sensor_chan
     request_frame[0] = AM2320_FC_READ_REG;
     request_frame[2] = 2;
 
-    uint16_t crc_calc;
-    uint16_t crc_recv;
     switch (chan) {
         case SENSOR_CHAN_AMBIENT_TEMP:
             LOG_DBG("temperature sample fetch");
@@ -66,13 +80,9 @@ static int am2320_sensor_sample_fetch(const struct device* dev, enum sensor_chan
                 return -EIO;
             }
 
-            // TODO: Make CRC optional
-            crc_calc = crc16_ansi(response_frame, sizeof(response_frame) - 4);
-            crc_recv = (response_frame[sizeof(response_frame) - 3] << 8) | response_frame[sizeof(response_frame) - 4];
-            if (crc_calc != crc_recv) {
-                LOG_ERR("Temperature CRC check failed: calc=0x%04x recv=0x%04x", crc_calc, crc_recv);
+            if (!am2320_crc_ok(response_frame, sizeof(response_frame) - 2))
                 return -EAGAIN;
-            }
+
             uint16_t raw = (response_frame[2] << 8) | response_frame[3];
             bool sign = raw & 0x8000;
             raw &= ~0x8000;
@@ -101,13 +111,8 @@ static int am2320_sensor_sample_fetch(const struct device* dev, enum sensor_chan
                 return -EAGAIN;
             }
 
-            // TODO: Make CRC optional
-            crc_calc = crc16_ansi(response_frame, sizeof(response_frame) - 4);
-            crc_recv = (response_frame[sizeof(response_frame) - 3] << 8) | response_frame[sizeof(response_frame) - 4];
-            if (crc_calc != crc_recv) {
-                LOG_ERR("Humidity CRC check failed: calc=0x%04x recv=0x%04x", crc_calc, crc_recv);
+            if (!am2320_crc_ok(response_frame, sizeof(response_frame) - 2))
                 return -EAGAIN;
-            }
 
             data->humid_p_tenths = (response_frame[2] << 8) | response_frame[3];
 
@@ -136,13 +141,8 @@ static int am2320_sensor_sample_fetch(const struct device* dev, enum sensor_chan
             return -EAGAIN;
         }
 
-        // TODO: Make CRC optional
-        crc_calc = crc16_ansi(response_frame, sizeof(response_frame) - 2);
-        crc_recv = (response_frame[sizeof(response_frame) - 1] << 8) | response_frame[sizeof(response_frame) - 2];
-        if (crc_calc != crc_recv) {
-            LOG_ERR("temperature and humidity CRC check failed: calc=0x%04x recv=0x%04x", crc_calc, crc_recv);
+        if (!am2320_crc_ok(response_frame, sizeof(response_frame)))
             return -EAGAIN;
-        }
 
         uint16_t temp_raw = (response_frame[2] << 8) | response_frame[3];
         bool temp_sign = temp_raw & 0x8000;
