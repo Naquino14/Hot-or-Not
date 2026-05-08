@@ -8,6 +8,9 @@ export SECRETS_FILE := $(CWD)/app/secrets.conf
 target:
 	west build -b $(BOARD) -s app -p auto -- -DEXTRA_CONF_FILE=$(SECRETS_FILE)
 
+doctor:
+	west build -b $(BOARD) -s app -p auto -- -DEXTRA_CONF_FILE=$(SECRETS_FILE) -DZEPHYR_SCA_VARIANT=dtdoctor
+
 flash:
 	west flash --esp-device /dev/ttyUSB0
 

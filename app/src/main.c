@@ -3,10 +3,15 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/net/icmp.h>
 #include <string.h>
+#include <zephyr/drivers/sensor.h>
 
 #include "conn-mgr.h"
 
 LOG_MODULE_REGISTER(main);
+
+// get am2320 device
+#define TANDH_NODE DT_ALIAS(tandh)
+const struct device* dev_tandh = DEVICE_DT_GET(TANDH_NODE);
 
 // ping callback
 static bool inet_ok = false;
@@ -21,7 +26,7 @@ void ping_cb(int code) {
 
 
 #define MAX_IP_STR 16
-#define DNS_QUERY_TIMEOUT_MS 5000
+#define DNS_QUERY_TIMEOUT_MS 12000
 #define DNS_QUERY_MAX_RETRIES 5
 
 #define WIFI_CONNECT_TIMEOUT_MS 10000
@@ -95,6 +100,64 @@ int main(void) {
     }
 
     LOG_INF("Network tests OK");
+    
+    if (!device_is_ready(dev_tandh)) {
+        LOG_ERR("Ah breh ts dont work");
+        return 1;
+    } else {
+        LOG_INF("Found temperature and humidity sensor!");
+    }
+
+    for (;;) {
+        double temp = -1;
+        double humid = -1;
+
+        k_sleep(K_SECONDS(CONFIG_SENSOR_SAMPLE_RATE));
+
+#if defined(CONFIG_SENSOR_READ_ALL_CHANNELS)
+        int ret = sensor_sample_fetch_chan(dev_tandh, SENSOR_CHAN_ALL);
+        if (ret < 0) {
+            LOG_ERR("Fetch all channels failed: %d", ret);
+            continue;
+        }
+#else
+        int ret = sensor_sample_fetch_chan(dev_tandh, SENSOR_CHAN_AMBIENT_TEMP);
+        if (ret < 0) {
+            LOG_ERR("Get ambient temp failed: %d", ret);
+            continue;
+        }
+
+        k_msleep(2000);
+
+        ret = sensor_sample_fetch_chan(dev_tandh, SENSOR_CHAN_HUMIDITY);
+        if (ret < 0) {
+            LOG_ERR("Get humidity failed: %d", ret);
+            continue;
+        }
+#endif
+
+        k_msleep(1);
+
+        struct sensor_value temp_val;
+        ret = sensor_channel_get(dev_tandh, SENSOR_CHAN_AMBIENT_TEMP, &temp_val);
+        if (ret < 0) {
+            LOG_ERR("Get ambient temp failed: %d", ret); 
+            continue;
+        }
+        temp = temp_val.val1 + temp_val.val2 / 10.0;
+
+        struct sensor_value humid_val;
+        ret = sensor_channel_get(dev_tandh, SENSOR_CHAN_HUMIDITY, &humid_val);
+        if (ret < 0) {  
+            LOG_ERR("Get humidity failed: %d", ret); 
+            continue;
+        }
+        humid = humid_val.val1 + humid_val.val2 / 10.0;
+
+        double temp_f = temp * 9 / 5 + 32;
+
+        LOG_INF("Temperature: %.1f C (%.1f F), Humidity: %.1f %%", temp, temp_f, humid);
+    }
 
     return 0;
 }
