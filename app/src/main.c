@@ -5,7 +5,8 @@
 #include <string.h>
 #include <zephyr/drivers/sensor.h>
 
-#include "conn-mgr.h"
+#include "net/conn-mgr.h"
+#include "net/smtp_client.h"
 
 LOG_MODULE_REGISTER(main);
 
@@ -100,7 +101,23 @@ int main(void) {
     }
 
     LOG_INF("Network tests OK");
-    
+
+    // query for mail server ipv4 address
+    attempt = 0; // reset attempt counter
+    dns_query_ok = false; // reset dns query flag
+    while (!dns_query_ok && attempt < max_retries) {
+        LOG_INF("Resolving mail server IP address... (attempt %d/%d)", attempt + 1, max_retries);
+        conn_mgr_dns_query("smtp.gmail.com", query_cb);
+        k_msleep(timeout_ms / max_retries);
+        attempt++;
+    }
+    if (!dns_query_ok) {
+        LOG_ERR("Could not resolve mail server address after %d attempts. Aborting.", max_retries);
+        return -1;
+    }
+
+    smtp_set_server_ipaddr(found_ip);
+
     if (!device_is_ready(dev_tandh)) {
         LOG_ERR("Ah breh ts dont work");
         return 1;

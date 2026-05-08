@@ -32,6 +32,28 @@ config SMTP_SECRET
     help
         The SMTP password that the board will use to send emails via SMTP.
 
+config SMTP_EMAIL
+    string "Email address of the node"
+    help
+        The email address that the board will use as the sender when sending emails via SMTP.
+
+config SMTP_SERVER
+    string "SMTP server address"
+    help
+        The address of the SMTP server that the board will connect to when sending emails via SMTP.
+
+config SMTP_PORT
+    int "SMTP server port"
+    default 587
+    help
+        The port of the SMTP server that the board will connect to when sending emails via SMTP.
+
+config SMTP_TIMEOUT
+    int "SMTP connection timeout"
+    default 5
+    help
+        The time to wait for a response from the SMTP server before timing out, in seconds.
+
 menu "Zephyr Kernel"
 source "Kconfig.zephyr"
 endmenu
