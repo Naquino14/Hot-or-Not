@@ -35,7 +35,8 @@ static int am2320_sensor_sample_fetch(const struct device* dev, enum sensor_chan
 
     int ret;
     uint8_t request_frame[3]; // [function code, high register addr, 2 bytes]
-    uint8_t response_frame[6]; // [function code, 2 bytes, high value, low value, high crc, low crc]
+    // [function code, 2 bytes, high value, low value, high crc | high value 2, low crc | low value 2 [, high crc, low crc]]
+    uint8_t response_frame[8]; 
 
     request_frame[0] = AM2320_FC_READ_REG;
     request_frame[2] = 2;
@@ -56,7 +57,7 @@ static int am2320_sensor_sample_fetch(const struct device* dev, enum sensor_chan
             k_sleep(AM2320_REQUEST_DELAY);
 
             // read temperature
-            ret = i2c_read_dt(&cfg->i2c, response_frame, sizeof(response_frame));
+            ret = i2c_read_dt(&cfg->i2c, response_frame, sizeof(response_frame) - 2);
             if (ret < 0) {
                 LOG_ERR("Failed to read temperature register values: IO error.");
                 return -EIO;
@@ -66,10 +67,10 @@ static int am2320_sensor_sample_fetch(const struct device* dev, enum sensor_chan
             }
 
             // TODO: Make CRC optional
-            crc_calc = crc16_ansi(response_frame, sizeof(response_frame) - 2);
-            crc_recv = (response_frame[5] << 8) | response_frame[4];
+            crc_calc = crc16_ansi(response_frame, sizeof(response_frame) - 4);
+            crc_recv = (response_frame[sizeof(response_frame) - 3] << 8) | response_frame[sizeof(response_frame) - 4];
             if (crc_calc != crc_recv) {
-                LOG_ERR("CRC check failed: calc=0x%04x recv=0x%04x", crc_calc, crc_recv);
+                LOG_ERR("Temperature CRC check failed: calc=0x%04x recv=0x%04x", crc_calc, crc_recv);
                 return -EAGAIN;
             }
             uint16_t raw = (response_frame[2] << 8) | response_frame[3];
@@ -91,7 +92,7 @@ static int am2320_sensor_sample_fetch(const struct device* dev, enum sensor_chan
             k_sleep(AM2320_REQUEST_DELAY);
 
             // read humidity
-            ret = i2c_read_dt(&cfg->i2c, response_frame, sizeof(response_frame));
+            ret = i2c_read_dt(&cfg->i2c, response_frame, sizeof(response_frame) - 2);
             if (ret < 0) {
                 LOG_ERR("Failed to read humidity register values: IO error.");
                 return -EIO;
@@ -101,16 +102,56 @@ static int am2320_sensor_sample_fetch(const struct device* dev, enum sensor_chan
             }
 
             // TODO: Make CRC optional
-            crc_calc = crc16_ansi(response_frame, sizeof(response_frame) - 2);
-            crc_recv = (response_frame[5] << 8) | response_frame[4];
+            crc_calc = crc16_ansi(response_frame, sizeof(response_frame) - 4);
+            crc_recv = (response_frame[sizeof(response_frame) - 3] << 8) | response_frame[sizeof(response_frame) - 4];
             if (crc_calc != crc_recv) {
-                LOG_ERR("CRC check failed: calc=0x%04x recv=0x%04x", crc_calc, crc_recv);
+                LOG_ERR("Humidity CRC check failed: calc=0x%04x recv=0x%04x", crc_calc, crc_recv);
                 return -EAGAIN;
             }
 
             data->humid_p_tenths = (response_frame[2] << 8) | response_frame[3];
 
             break;
+        case SENSOR_CHAN_ALL:
+        case SENSOR_CHAN_AMBIENT_TEMP | SENSOR_CHAN_HUMIDITY:
+        LOG_DBG("temperature and humidity sample fetch");
+        
+        // send request for both temperature and humidity
+        request_frame[1] = AM2320_REG_HUMIDITY_HIGH;
+        request_frame[2] = 4; // 2 bytes temp, 2 bytes humidity
+        ret = i2c_write_dt(&cfg->i2c, request_frame, sizeof(request_frame));
+        if (ret < 0) {
+            LOG_ERR("Failed to request temperature humidity register values: IO error.");
+            return -EIO;
+        }
+        k_sleep(AM2320_REQUEST_DELAY);
+
+        // read temperature and humidity
+        ret = i2c_read_dt(&cfg->i2c, response_frame, sizeof(response_frame));
+        if (ret < 0) {
+            LOG_ERR("Failed to read temperature and humidity register values: IO error.");
+            return -EIO;
+        } else if (response_frame[0] != AM2320_FC_READ_REG || response_frame[1] != 4) {
+            LOG_ERR("Bad temperature and humidity response header: fc=0x%02x len=%u", response_frame[0], response_frame[1]);
+            return -EAGAIN;
+        }
+
+        // TODO: Make CRC optional
+        crc_calc = crc16_ansi(response_frame, sizeof(response_frame) - 2);
+        crc_recv = (response_frame[sizeof(response_frame) - 1] << 8) | response_frame[sizeof(response_frame) - 2];
+        if (crc_calc != crc_recv) {
+            LOG_ERR("temperature and humidity CRC check failed: calc=0x%04x recv=0x%04x", crc_calc, crc_recv);
+            return -EAGAIN;
+        }
+
+        uint16_t temp_raw = (response_frame[2] << 8) | response_frame[3];
+        bool temp_sign = temp_raw & 0x8000;
+        temp_raw &= ~0x8000;
+        data->temp_c_tenths = (temp_sign ? -temp_raw : temp_raw);
+
+        data->humid_p_tenths = (response_frame[4] << 8) | response_frame[5];
+
+        break;
         default:
             LOG_ERR("Channel not supported.");
             return -ENOTSUP;

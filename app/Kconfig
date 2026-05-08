@@ -15,6 +15,18 @@ config WIFI_PSK
     help
         The WiFi password that the board will use to connect to the WiFi network.
 
+config SENSOR_SAMPLE_RATE
+    int "Sensor sample wait time"
+    default 10
+    help
+        The time to wait between sensor samples, in seconds.
+
+config SENSOR_READ_ALL_CHANNELS
+    bool "Read temperature and humidity channels at the same time"
+    default y
+    help
+        If enabled, the driver will read both temperature and humidity channels in a single I2C transaction (faster). 
+
 menu "Zephyr Kernel"
 source "Kconfig.zephyr"
 endmenu

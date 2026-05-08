@@ -114,8 +114,15 @@ int main(void) {
         double temp = -1;
         double humid = -1;
 
-        k_sleep(K_SECONDS(10));
+        k_sleep(K_SECONDS(CONFIG_SENSOR_SAMPLE_RATE));
 
+#if defined(CONFIG_SENSOR_READ_ALL_CHANNELS)
+        int ret = sensor_sample_fetch_chan(dev_tandh, SENSOR_CHAN_ALL);
+        if (ret < 0) {
+            LOG_ERR("Fetch all channels failed: %d", ret);
+            continue;
+        }
+#else
         int ret = sensor_sample_fetch_chan(dev_tandh, SENSOR_CHAN_AMBIENT_TEMP);
         if (ret < 0) {
             LOG_ERR("Get ambient temp failed: %d", ret);
@@ -129,8 +136,9 @@ int main(void) {
             LOG_ERR("Get humidity failed: %d", ret);
             continue;
         }
+#endif
 
-        k_msleep(100);
+        k_msleep(1);
 
         struct sensor_value temp_val;
         ret = sensor_channel_get(dev_tandh, SENSOR_CHAN_AMBIENT_TEMP, &temp_val);
