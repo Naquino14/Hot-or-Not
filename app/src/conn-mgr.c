@@ -6,8 +6,7 @@
 #include <zephyr/shell/shell.h>
 #include <zephyr/net/icmp.h>
 #include <zephyr/net/dns_resolve.h>
-#include <zephyr/net/icmp.h>
-#include <zephyr/net/dns_resolve.h>
+#include <zephyr/sys/reboot.h>
 
 // see sample:
 // https://github.com/zephyrproject-rtos/zephyr/blob/main/samples/net/wifi/apsta_mode/src/main.c
@@ -17,11 +16,17 @@ LOG_MODULE_REGISTER(conn_mgr);
 #define MACSTR "%02X:%02X:%02X:%02X:%02X:%02X"
 
 #define NET_EVENT_WIFI_MASK                                                    \
-	    (NET_EVENT_WIFI_CONNECT_RESULT   | NET_EVENT_WIFI_DISCONNECT_RESULT |  \
-	     NET_EVENT_WIFI_AP_ENABLE_RESULT | NET_EVENT_WIFI_AP_DISABLE_RESULT |  \
-	     NET_EVENT_WIFI_AP_STA_CONNECTED | NET_EVENT_WIFI_AP_STA_DISCONNECTED)
+            (NET_EVENT_WIFI_CONNECT_RESULT   | NET_EVENT_WIFI_DISCONNECT_RESULT |  \
+             NET_EVENT_WIFI_AP_ENABLE_RESULT | NET_EVENT_WIFI_AP_DISABLE_RESULT |  \
+             NET_EVENT_WIFI_AP_STA_CONNECTED | NET_EVENT_WIFI_AP_STA_DISCONNECTED)
 
 #define DNS_TIMEOUT_MS 2000
+#define CONN_WATCHDOG_PERIOD K_SECONDS(5)
+#define CONN_WATCHDOG_MAX_MISSES 12
+
+static int watchdog_enabled = false;
+static struct k_work_delayable conn_watchdog_work;
+static uint32_t watchdog_disconnect_count;
 
 // configs for wifi station mode
 static struct net_if *sta_iface;
@@ -37,6 +42,8 @@ static struct net_mgmt_event_callback net_mgmt_event_cb;
 // flags
 static bool initd = false;
 static bool connected = false;
+
+static void conn_watchdog_handler(struct k_work *work);
 
 static void wifi_event_handler(struct net_mgmt_event_callback *cb, uint64_t event_code, struct net_if *iface) {
     switch (event_code) {
@@ -96,8 +103,69 @@ int conn_mgr_init() {
                 mac_addr->addr[3], mac_addr->addr[4], mac_addr->addr[5]);
 
     k_sem_init(&ping_sem, 1, 1);
+    k_work_init_delayable(&conn_watchdog_work, conn_watchdog_handler);
+    watchdog_disconnect_count = 0;
 
     return 0;
+}
+
+static void conn_watchdog_handler(struct k_work *work) {
+    ARG_UNUSED(work);
+
+    if (!watchdog_enabled) {
+        return;
+    }
+
+    if (connected) {
+        if (watchdog_disconnect_count > 0) {
+            LOG_INF("Connection watchdog recovered link after %u missed checks",
+                    watchdog_disconnect_count);
+        }
+        watchdog_disconnect_count = 0;
+        k_work_reschedule(&conn_watchdog_work, CONN_WATCHDOG_PERIOD);
+        return;
+    }
+
+    watchdog_disconnect_count++;
+    LOG_WRN("Connection watchdog detected disconnect (%u/%u)",
+            watchdog_disconnect_count, CONN_WATCHDOG_MAX_MISSES);
+
+    int ret = conn_mgr_connect();
+    if (ret < 0) {
+        LOG_WRN("Watchdog reconnect request failed (%d)", ret);
+    }
+
+    if (watchdog_disconnect_count >= CONN_WATCHDOG_MAX_MISSES) {
+        LOG_ERR("Connection watchdog exceeded recovery limit, rebooting");
+        sys_reboot(SYS_REBOOT_WARM);
+    }
+
+    k_work_reschedule(&conn_watchdog_work, CONN_WATCHDOG_PERIOD);
+}
+
+int cmd_conn_mgr_enable_watchdog(const struct shell* sh, size_t argc, char** argv) {
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+    conn_mgr_enable_watchdog();
+    return 0;
+}
+
+void conn_mgr_enable_watchdog() {
+    if (watchdog_enabled) 
+        return;
+
+    if (!initd) {
+        int ret = conn_mgr_init();
+        if (ret < 0) {
+            LOG_ERR("Cannot enable connection watchdog before init (%d)", ret);
+            return;
+        }
+    }
+
+    watchdog_enabled = true;
+    watchdog_disconnect_count = 0;
+    k_work_reschedule(&conn_watchdog_work, CONN_WATCHDOG_PERIOD);
+    LOG_INF("Connection watchdog enabled");
 }
 
 int cmd_conn_mgr_connect(const struct shell* sh, size_t argc, char** argv) {
@@ -317,6 +385,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_conn_mgr,
     SHELL_CMD(disconnect, NULL, "Disconnect from the WiFi Network", cmd_conn_mgr_disconnect),
     SHELL_CMD(is_connected, NULL, "Check if currently connected to a WiFi network", cmd_is_connected),
     SHELL_CMD(dns_query, NULL, "Perform a DNS query for the given hostname", cmd_conn_mgr_dns_query),
+    SHELL_CMD(en_watchdog, NULL, "Enable the WiFi connection watchdog", cmd_conn_mgr_enable_watchdog),
     SHELL_SUBCMD_SET_END
 );
 

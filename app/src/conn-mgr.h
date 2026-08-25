@@ -26,6 +26,12 @@ int conn_mgr_disconnect();
  */
 bool conn_mgr_is_connected();
 
+/**
+ * @brief Enable connmgr watchdog
+ * It will automatically reconnect if the connection is lost, and log the event
+ */
+void conn_mgr_enable_watchdog();
+
 typedef void (*conn_mgr_dns_query_callback_t)(char* resolved_ip);
 
 int conn_mgr_dns_query(const char* hostname, conn_mgr_dns_query_callback_t cb);
