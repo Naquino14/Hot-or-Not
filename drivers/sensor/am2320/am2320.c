@@ -144,12 +144,12 @@ static int am2320_sensor_sample_fetch(const struct device* dev, enum sensor_chan
         if (!am2320_crc_ok(response_frame, sizeof(response_frame)))
             return -EAGAIN;
 
-        uint16_t temp_raw = (response_frame[2] << 8) | response_frame[3];
+        uint16_t temp_raw = (response_frame[4] << 8) | response_frame[5];
         bool temp_sign = temp_raw & 0x8000;
         temp_raw &= ~0x8000;
         data->temp_c_tenths = (temp_sign ? -temp_raw : temp_raw);
 
-        data->humid_p_tenths = (response_frame[4] << 8) | response_frame[5];
+        data->humid_p_tenths = (response_frame[2] << 8) | response_frame[3];
 
         break;
         default:
