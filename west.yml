@@ -3,16 +3,20 @@
 
 manifest:
   remotes:
-    - name: zephyrproject-rtos
+    - name: zephyrproject
       url-base: https://github.com/zephyrproject-rtos
 
   projects:
     - name: zephyr
-      remote: zephyrproject-rtos
-      revision: main
+      repo-path: zephyr
+      remote: zephyrproject
+      revision: v4.4.2
       import:
-        # By using name-allowlist we can clone only the modules that are
-        # strictly needed by the application.
+        path-prefix: deps
         name-allowlist:
           - hal_espressif
           - mbedtls
+      clone-depth: 1
+
+  self:
+    path: app
