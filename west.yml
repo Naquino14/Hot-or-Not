@@ -5,6 +5,8 @@ manifest:
   remotes:
     - name: zephyrproject
       url-base: https://github.com/zephyrproject-rtos
+    - name: conn-mgr-lib
+      url-base: https://github.com/Naquino14/conn-mgr
 
   projects:
     - name: zephyr
@@ -13,10 +15,9 @@ manifest:
       revision: v4.4.2
       import:
         path-prefix: deps
-        name-allowlist:
-          - hal_espressif
-          - mbedtls
-      clone-depth: 1
+    - name: conn-mgr
+      revision: master
+      path: modules/lib/conn-mgr
 
   self:
     path: hot-or-not
