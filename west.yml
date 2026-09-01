@@ -5,8 +5,8 @@ manifest:
   remotes:
     - name: zephyrproject
       url-base: https://github.com/zephyrproject-rtos
-    - name: conn-mgr-lib
-      url-base: https://github.com/Naquino14/conn-mgr
+    - name: conn-mgr
+      url-base: https://github.com/Naquino14
 
   projects:
     - name: zephyr
@@ -17,7 +17,7 @@ manifest:
         path-prefix: deps
     - name: conn-mgr
       revision: master
-      remote: conn-mgr-lib
+      remote: conn-mgr
       path: modules/lib/conn-mgr
 
   self:
