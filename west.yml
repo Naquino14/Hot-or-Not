@@ -17,6 +17,7 @@ manifest:
         path-prefix: deps
     - name: conn-mgr
       revision: master
+      remote: conn-mgr-lib
       path: modules/lib/conn-mgr
 
   self:
