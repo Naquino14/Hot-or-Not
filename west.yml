@@ -14,11 +14,15 @@ manifest:
       remote: zephyrproject
       revision: v4.4.2
       import:
-        path-prefix: deps
+        name-allowlist:
+          - hal_espressif
+          - mbedtls
+          - tf-psa-crypto
+      clone-depth: 1
     - name: conn-mgr
-      revision: master
+      repo-path: conn-mgr
       remote: conn-mgr
-      path: modules/lib/conn-mgr
+      revision: master
 
   self:
     path: hot-or-not
