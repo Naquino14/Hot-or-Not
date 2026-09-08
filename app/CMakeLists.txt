@@ -6,7 +6,6 @@ project(hot-or-not LANGUAGES C)
 
 target_sources(app PRIVATE 
     src/main.c
-    src/conn-mgr.c
 )
 
-
+target_link_libraries(app PRIVATE conn_mgr)

@@ -5,7 +5,7 @@
 #include <string.h>
 #include <zephyr/drivers/sensor.h>
 
-#include "conn-mgr.h"
+#include <conn_mgr.h>
 
 LOG_MODULE_REGISTER(main);
 
