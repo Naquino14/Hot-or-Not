@@ -77,8 +77,8 @@ int main(void) {
     max_retries = DNS_QUERY_MAX_RETRIES;
     attempt = 0; // reset attempt counter
     while (!dns_query_ok && attempt < max_retries) {
-        LOG_INF("Performing DNS query... (attempt %d/%d)", attempt + 1, max_retries);
-        conn_mgr_dns_query("google.com", query_cb);
+        LOG_INF("Performing DNS query of %s... (attempt %d/%d)", CONFIG_SMTP_SERVER, attempt + 1, max_retries);
+        conn_mgr_dns_query(CONFIG_SMTP_SERVER, query_cb);
         k_msleep(timeout_ms / max_retries);
         attempt++;
     }
