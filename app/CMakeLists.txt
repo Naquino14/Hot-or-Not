@@ -6,6 +6,7 @@ project(hot-or-not LANGUAGES C)
 
 target_sources(app PRIVATE 
     src/main.c
+    src/smtp.c
 )
 
 target_link_libraries(app PRIVATE conn_mgr)

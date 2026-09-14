@@ -1,0 +1,24 @@
+menu "SMTP"
+
+config SMTP_SERVER
+    string "The SMTP mail server"
+    help
+        "This is the mail server the app communicates with."
+    
+config SMTP_USERNAME
+    string "SMTP username"
+    help
+        "The username the client uses to authenticate with the SMTP server."
+    
+config SMTP_PASSWORD
+    string "SMTP password"
+    help
+        "The password the client uses to authenticate with the SMTP server."
+
+config SMTP_PORT
+    int "SMTP server port"
+    help
+        "The SMTP server port to communicate on."
+    default 465
+
+endmenu

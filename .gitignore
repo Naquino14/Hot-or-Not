@@ -62,3 +62,4 @@ deps/
 
 # secrets
 app/secrets.conf
+app/smtp.secrets.conf

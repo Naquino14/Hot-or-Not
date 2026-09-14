@@ -27,6 +27,8 @@ config SENSOR_READ_ALL_CHANNELS
     help
         If enabled, the driver will read both temperature and humidity channels in a single I2C transaction (faster). 
 
+rsource "smtp.Kconfig"
+
 menu "Zephyr Kernel"
 source "Kconfig.zephyr"
 endmenu

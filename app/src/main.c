@@ -7,6 +7,8 @@
 
 #include <conn_mgr.h>
 
+#include "smtp.h"
+
 LOG_MODULE_REGISTER(main);
 
 // get am2320 device
