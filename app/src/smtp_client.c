@@ -17,6 +17,9 @@ void smtp_set_server_ipaddr(const char *ipaddr) {
         LOG_ERR("Invalid IP address format: %s", ipaddr);
         return;
     }
+
+    smtp_server.sin_family = AF_INET;
+    smtp_server.sin_port = (uint16_t)CONFIG_SMTP_PORT;
 }
 
 int smtp_client_send(const smtp_mail_t* mail) {
@@ -24,4 +27,6 @@ int smtp_client_send(const smtp_mail_t* mail) {
         LOG_ERR("SMTP Server IP Address is not set.");
         return -EADDRNOTAVAIL;
     }
+
+    return 0;
 }

@@ -7,7 +7,7 @@
 
 #include <conn_mgr.h>
 
-#include "smtp.h"
+#include "smtp_client.h"
 
 LOG_MODULE_REGISTER(main);
 
@@ -102,6 +102,9 @@ int main(void) {
     }
 
     LOG_INF("Network tests OK");
+
+    // set smtp address
+    smtp_set_server_ipaddr(found_ip);
     
     if (!device_is_ready(dev_tandh)) {
         LOG_ERR("Ah breh ts dont work");

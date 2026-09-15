@@ -8,7 +8,7 @@ config SMTP_SERVER
 config SMTP_USERNAME
     string "SMTP username"
     help
-        "The username the client uses to authenticate with the SMTP server."
+        "The email username the client uses to authenticate with the SMTP server."
     
 config SMTP_PASSWORD
     string "SMTP password"
