@@ -21,4 +21,9 @@ config SMTP_PORT
         "The SMTP server port to communicate on."
     default 465
 
+config SMTP_CA_PEM_FILENAME
+    string "Certificate Authority .PEM"
+    help
+        "Certificate Authority (CA) Privacy Enhanced Mail (PEM) credentials for the SMTP_SERVER."
+
 endmenu
