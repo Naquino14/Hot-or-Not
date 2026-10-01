@@ -63,4 +63,4 @@ deps/
 # secrets
 app/secrets.conf
 app/smtp.secrets.conf
-app/*.pem
+app/src/tls/*.pem

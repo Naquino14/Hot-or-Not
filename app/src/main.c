@@ -8,6 +8,7 @@
 #include <conn_mgr.h>
 
 #include "smtp_client.h"
+#include "tls/hon_tls.h"
 
 LOG_MODULE_REGISTER(main);
 
@@ -112,6 +113,13 @@ int main(void) {
     } else {
         LOG_INF("Found temperature and humidity sensor!");
     }
+
+    int ret = hon_tls_init();
+    if (ret < 0) {
+        LOG_ERR("Failed to start TLS");
+        return 1;
+    } else 
+        LOG_INF("TLS Started");
 
     for (;;) {
         double temp = -1;

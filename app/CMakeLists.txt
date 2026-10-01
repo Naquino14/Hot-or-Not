@@ -7,7 +7,24 @@ project(hot-or-not LANGUAGES C)
 target_sources(app PRIVATE 
     src/main.c
     src/smtp_client.c
-    src/tls.c
+    src/tls/hon_tls.c
+)
+
+# Get cert PEM filename from secrets config
+file(STRINGS "smtp.secrets.conf" CONFIG_LINE REGEX "SMTP_CA_PEM_FILENAME")
+
+# extract just the filename part
+string(REGEX REPLACE ".*\"([^\"]+)\".*" "\\1" CA_PEM_FILENAME "${CONFIG_LINE}")
+
+# append .inc
+set(CA_PEM_INC_FILENAME "${CA_PEM_FILENAME}.inc")
+
+# make it a compile definition to include it down the line
+add_compile_definitions(app PRIVATE CA_PEM_INC_FILENAME="${CA_PEM_INC_FILENAME}")
+
+generate_inc_file_for_target(app
+    src/tls/${CA_PEM_FILENAME}
+    ${ZEPHYR_BINARY_DIR}/include/generated/${CA_PEM_INC_FILENAME}
 )
 
 target_link_libraries(app PRIVATE conn_mgr)
