@@ -8,6 +8,7 @@ target_sources(app PRIVATE
     src/main.c
     src/smtp_client.c
     src/tls/hon_tls.c
+    src/hon_sntp.c
 )
 
 # Get cert PEM filename from secrets config

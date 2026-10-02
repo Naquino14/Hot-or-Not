@@ -8,6 +8,7 @@
 #include <conn_mgr.h>
 
 #include "smtp_client.h"
+#include "hon_sntp.h"
 #include "tls/hon_tls.h"
 
 LOG_MODULE_REGISTER(main);
@@ -84,7 +85,7 @@ int main(void) {
         attempt++;
     }
     if (!dns_query_ok) {
-        LOG_ERR("Could not resolve DNS after %d attempts, aborting tests.", max_retries);
+        LOG_ERR("Could not resolve IP for %s after %d attempts, aborting tests.", CONFIG_SMTP_SERVER, max_retries);
         return -1;
     }
 
@@ -101,6 +102,24 @@ int main(void) {
         LOG_ERR("Could not ping host after %d attempts, aborting tests.", max_retries);
         return -1;
     }
+
+    // get sntp address
+    attempt = 0; // reset attempt counter
+    dns_query_ok = false; // reset ok flag
+    while (!dns_query_ok && attempt < max_retries) {
+        LOG_INF("Performing DNS query of %s... (attempt %d/%d)", CONFIG_SNTP_SERVER, attempt + 1, max_retries);
+        conn_mgr_dns_query(CONFIG_SNTP_SERVER, query_cb);
+        k_msleep(timeout_ms / max_retries);
+        attempt++;
+    }
+        if (!dns_query_ok) {
+        LOG_ERR("Could not resolve IP for %s after %d attempts, aborting tests.", CONFIG_SNTP_SERVER, max_retries);
+        return -1;
+    }
+
+    hon_sntp_set_server_ipaddr(found_ip);
+
+    hon_sntp_get_time();
 
     LOG_INF("Network tests OK");
 
