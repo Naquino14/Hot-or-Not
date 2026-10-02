@@ -3,6 +3,7 @@
 #include <zephyr/net/socket.h>
 #include <zephyr/net/socket_service.h>
 #include <zephyr/net/sntp.h>
+#include <zephyr/shell/shell.h>
 #include <zephyr/sys_clock.h>
 #include <conn_mgr.h>
 
@@ -31,13 +32,6 @@ void hon_sntp_set_server_ipaddr(const char *ipaddr) {
 
     sntp_server_addr.sin_family = AF_INET;
     sntp_server_addr.sin_port = htons(SNTP_PORT);
-
-
-    ret = sntp_init_async(&snmp_ctx, (const struct net_sockaddr*)&sntp_server_addr, sizeof(sntp_server_addr), &service_sntp_async);
-    if (ret < 0) {
-        LOG_ERR("Failed to init async SNTP ctx: %d", ret);
-        return;
-    }
 }
 
 static long frac_to_adj_nsec(uint32_t fraction, uint32_t delay_us) {
@@ -93,10 +87,34 @@ static void sntp_service_handler(struct net_socket_service_event *evt) {
 }
 
 int hon_sntp_get_time() {
-    int ret = sntp_send_async(&snmp_ctx);
+    int ret = sntp_init_async(&snmp_ctx, (const struct net_sockaddr*)&sntp_server_addr, sizeof(sntp_server_addr), &service_sntp_async);
+    if (ret < 0) {
+        LOG_ERR("Failed to init async SNTP ctx: %d", ret);
+        return ret;
+    }
+
+    ret = sntp_send_async(&snmp_ctx);
     if (ret < 0)
         LOG_ERR("Failed to perform async SNTP query: %d", ret);
-    
+
     sntp_done = false;
+
     return ret;
 }
+
+static int cmd_resync(const struct shell *shell, size_t argc, char **argv)
+{
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+
+    int ret = hon_sntp_get_time();
+    if (ret < 0) {
+        shell_error(shell, "SNTP resync failed: %d", ret);
+        return ret;
+    }
+
+    shell_print(shell, "SNTP resync requested");
+    return 0;
+}
+
+SHELL_CMD_REGISTER(resync, NULL, "Request an SNTP resynchronization", cmd_resync);
