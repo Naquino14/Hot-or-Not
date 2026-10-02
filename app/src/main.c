@@ -49,6 +49,11 @@ void query_cb(char* resolved_ip) {
         LOG_WRN("Ignoring duplicate DNS response.");
 }
 
+struct k_timer sntp_rtc_timer;
+void rtc_timer_expired(struct k_timer *timer_id) {
+    hon_sntp_get_time();
+}
+
 int main(void) {
     k_msleep(500);
     LOG_INF("Hello, Carlson!");
@@ -119,7 +124,9 @@ int main(void) {
 
     hon_sntp_set_server_ipaddr(found_ip);
 
-    hon_sntp_get_time();
+    // enable sntp timer, run once now and do every 24 hours
+    k_timer_init(&sntp_rtc_timer, rtc_timer_expired, NULL);
+    k_timer_start(&sntp_rtc_timer, K_NO_WAIT, K_HOURS(24));
 
     LOG_INF("Network tests OK");
 
