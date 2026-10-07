@@ -1,5 +1,6 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/net/socket.h>
 #include <zephyr/net/tls_credentials.h>
 #include <mbedtls/pem.h>
 #include <limits.h>
@@ -14,6 +15,8 @@ static size_t der_len = INT_MAX;
 
 #define PEM_HEADER "-----BEGIN CERTIFICATE-----"
 #define PEM_FOOTER "-----END CERTIFICATE-----"
+
+static bool rdy = false;
 
 int hon_tls_init() {
     // init ctx
@@ -50,5 +53,73 @@ int hon_tls_init() {
             break;
     }
 
+    ret = tls_credential_add(
+        CA_CERTIFICATE_TAG,
+        TLS_CREDENTIAL_CA_CERTIFICATE,
+        smtp_ca_certificate,
+        sizeof(smtp_ca_certificate) - 1
+    );
+    if (ret < 0) {
+        LOG_ERR("Could not add CA Certificate to TLS system: %d", ret);
+        return ret;
+    }
+
+    rdy = true;
     return 0;
+}
+
+int hon_tls_socket_cfg(int sock, const char* hostname) {
+    if (!rdy)
+        return -EAGAIN;
+
+    sec_tag_t sec_tag_list[] = { CA_CERTIFICATE_TAG };
+    
+    if (sock < 0 || hostname == NULL || *hostname == 0)
+        return -EINVAL;
+
+    int ret = zsock_setsockopt(
+        sock, 
+        SOL_TLS,
+        TLS_SEC_TAG_LIST,
+        sec_tag_list,
+        sizeof(sec_tag_list)
+    );
+    if (ret < 0) {
+        ret = -errno;
+        LOG_ERR("Failed to configure TLS credentials for %s on socket %d: %d", hostname, sock, ret);
+        return ret;
+    }
+
+    int peer_verify = TLS_PEER_VERIFY_REQUIRED;
+    ret = zsock_setsockopt(
+        sock,
+        SOL_TLS,
+        TLS_PEER_VERIFY,
+        &peer_verify,
+        sizeof(peer_verify)
+    );
+    if (ret < 0) {
+        ret = -errno;
+        LOG_ERR("Failed to configure TLS peer verification for %s on socket %d: %d", hostname, sock, ret);
+        return ret;
+    }
+
+    ret = zsock_setsockopt(
+        sock,
+        SOL_TLS,
+        TLS_HOSTNAME,
+        hostname,
+        strlen(hostname) + 1
+    );
+    if (ret < 0) {
+        ret = -errno;
+        LOG_ERR("Failed to configure TLS hostname for %s on socket %d: %d", hostname, sock, ret);
+        return ret;
+    }
+    
+    return 0;
+}
+
+bool hon_tls_rdy() {
+    return rdy;
 }
