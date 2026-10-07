@@ -108,6 +108,9 @@ int main(void) {
         return -1;
     }
 
+    // set smtp address
+    smtp_set_server_ipaddr(found_ip);
+
     // get sntp address
     attempt = 0; // reset attempt counter
     dns_query_ok = false; // reset ok flag
@@ -129,9 +132,6 @@ int main(void) {
     k_timer_start(&sntp_rtc_timer, K_NO_WAIT, K_HOURS(24));
 
     LOG_INF("Network tests OK");
-
-    // set smtp address
-    smtp_set_server_ipaddr(found_ip);
     
     if (!device_is_ready(dev_tandh)) {
         LOG_ERR("Ah breh ts dont work");
