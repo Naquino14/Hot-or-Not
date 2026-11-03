@@ -4,6 +4,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/net/socket.h>
 #include <zephyr/net/tls_credentials.h>
+#include <mbedtls/base64.h>
 
 #include "tls/hon_tls.h"
 
@@ -17,6 +18,8 @@ static bool rdy;
 
 #define ISNT_DIGIT(c) (c < '0' || c > '9')
 #define TO_DIGIT(c) (c - '0')
+
+#define CMDBUF_SIZE 256
 
 static int smtp_send_all(int sock, const char* data, size_t len) {
     size_t off = 0;
@@ -86,6 +89,50 @@ static int smtp_read_resp(int sock, int expect_code, int* actual_code) {
     }
 }
 
+#define BASE64_LEN(len) (((len + 2) / 3) * 4 + 1)
+static int smtp_auth_plain(int sock, char cmd_buf[CMDBUF_SIZE]) {
+    const size_t uname_len = sizeof(CONFIG_SMTP_USERNAME) - 1;
+    const size_t pass_len = sizeof(CONFIG_SMTP_PASSWORD) - 1;
+    const size_t cred_len = uname_len + pass_len + 2; // null + uname + null + pass
+    uint8_t cred[cred_len];
+    char encoded[BASE64_LEN(cred_len) + 1]; // allat + string null
+    
+    cred[0] = '\0';
+    memcpy(&cred[1], CONFIG_SMTP_USERNAME, uname_len);
+    cred[uname_len + 1] = '\0';
+    memcpy(&cred[uname_len + 2], CONFIG_SMTP_PASSWORD, pass_len);
+
+    size_t enc_len = 0;
+    int ret = mbedtls_base64_encode(encoded, sizeof(encoded) - 1, &enc_len, cred, cred_len);
+    if (ret != 0) {
+        LOG_ERR("Failed to encode SMTP creds: %d", ret);
+        return -EIO;
+    }
+
+    encoded[enc_len] = '\0';
+
+    int len = snprintf(cmd_buf, CMDBUF_SIZE, "AUTH PLAIN %s\r\n", encoded);
+    if (len < 0 || len >= CMDBUF_SIZE) {
+        LOG_ERR("SMTP AUTH command is too large: %u (sizeof(cmd_buf) is %u)", len, CMDBUF_SIZE);
+        return -E2BIG;
+    }
+
+    ret = smtp_send_all(sock, cmd_buf, len);
+    if (ret < 0) {
+        LOG_ERR("Failed to send SMTP AUTH: %d", ret);
+        return ret;
+    }
+
+    int actual_code;
+    ret = smtp_read_resp(sock, 235, &actual_code);
+    if (ret < 0) {
+        LOG_ERR("SMTP auth failed: %d (code %d)", ret, actual_code);
+        return ret;
+    }
+
+    return 0;
+}
+
 int smtp_set_server_ipaddr(const char *ipaddr, const char* hostname) {
     if (ipaddr == NULL || hostname == NULL)
         return -EINVAL;
@@ -108,7 +155,6 @@ int smtp_set_server_ipaddr(const char *ipaddr, const char* hostname) {
     return 0;
 }
 
-#define MAX_COMMAND 64
 int smtp_client_send(const smtp_mail_t* mail) {
     if (smtp_server.sin_family == 0 || !rdy) {
         LOG_ERR("SMTP Server IP Address is not set.");
@@ -150,7 +196,7 @@ int smtp_client_send(const smtp_mail_t* mail) {
         return ret;
     }
 
-    char command[64];
+    char command[CMDBUF_SIZE];
     int len = snprintf(command, sizeof(command), "EHLO %s\r\n", smtp_server_hostname);
     if (len < 0 || len >= sizeof(command)) {
         LOG_ERR("EHLO command too large?");
@@ -172,6 +218,14 @@ int smtp_client_send(const smtp_mail_t* mail) {
         zsock_close(sock);
         return ret;
     }
+
+    // auth. let auth borrow our buffer
+    ret = smtp_auth_plain(sock, command);
+    if (ret < 0) {
+        zsock_close(sock);        
+        return ret;
+    } else
+        LOG_INF("AUTH OK");
 
     len = snprintf(command, sizeof(command), "QUIT\r\n");
     ret = smtp_send_all(sock, command, len);
