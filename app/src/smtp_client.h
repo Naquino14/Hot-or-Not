@@ -7,7 +7,7 @@ typedef struct {
     const char* body;
 } smtp_mail_t;
 
-void smtp_set_server_ipaddr(const char* ipaddr);
+int smtp_set_server_ipaddr(const char* ipaddr, const char* hostname);
 
 int smtp_client_send(const smtp_mail_t* mail);
 

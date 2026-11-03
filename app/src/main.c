@@ -49,9 +49,15 @@ void query_cb(char* resolved_ip) {
         LOG_WRN("Ignoring duplicate DNS response.");
 }
 
-struct k_timer sntp_rtc_timer;
-void rtc_timer_expired(struct k_timer *timer_id) {
-    hon_sntp_get_time();
+/// TODO: Turn this into a thread
+#define SNTP_RESYNC_PERIOD K_HOURS(24)
+static struct k_work_delayable sntp_resync_dwork;
+static void sntp_resync_handler(struct k_work* work) {
+    int ret = hon_sntp_get_time();
+    if (ret < 0) 
+        LOG_ERR("RESYNC FAILED: (%d)! TOO BAD!", ret);
+        
+    k_work_reschedule(&sntp_resync_dwork, SNTP_RESYNC_PERIOD);
 }
 
 int main(void) {
@@ -109,7 +115,7 @@ int main(void) {
     }
 
     // set smtp address
-    smtp_set_server_ipaddr(found_ip);
+    smtp_set_server_ipaddr(found_ip, CONFIG_SMTP_SERVER);
 
     // get sntp address
     attempt = 0; // reset attempt counter
@@ -128,17 +134,16 @@ int main(void) {
     hon_sntp_set_server_ipaddr(found_ip);
 
     // enable sntp timer, run once now and do every 24 hours
-    k_timer_init(&sntp_rtc_timer, rtc_timer_expired, NULL);
-    k_timer_start(&sntp_rtc_timer, K_NO_WAIT, K_HOURS(24));
+    k_work_init_delayable(&sntp_resync_dwork, sntp_resync_handler);
+    k_work_reschedule(&sntp_resync_dwork, K_NO_WAIT);
 
-    LOG_INF("Network tests OK");
-    
-    if (!device_is_ready(dev_tandh)) {
-        LOG_ERR("Ah breh ts dont work");
-        return 1;
-    } else {
-        LOG_INF("Found temperature and humidity sensor!");
-    }
+    LOG_INF("Waiting for first-time time sync...");
+    while (!hon_sntp_ok())
+        k_msleep(100);
+
+    LOG_INF("Network tests OK, starting SMTP test");
+
+    k_msleep(1000);
 
     int ret = hon_tls_init();
     if (ret < 0) {
@@ -147,6 +152,27 @@ int main(void) {
     } else 
         LOG_INF("TLS Started");
 
+    // dummy mail while testing hello
+    const smtp_mail_t mail = {
+        .body = "",
+        .to = "help@cis.rit.edu",
+        .subject = "hi"
+    };
+    ret = smtp_client_send(&mail);
+    if (ret < 0) {
+        LOG_ERR("Shits fucked: %d", ret);
+        return 1;
+    }
+
+    LOG_INF("SMTP tests OK");
+    
+    if (!device_is_ready(dev_tandh)) {
+        LOG_ERR("Ah breh ts dont work");
+        return 1;
+    } else {
+        LOG_INF("Found temperature and humidity sensor!");
+    }
+
     for (;;) {
         double temp = -1;
         double humid = -1;
@@ -154,13 +180,13 @@ int main(void) {
         k_sleep(K_SECONDS(CONFIG_SENSOR_SAMPLE_RATE));
 
 #if defined(CONFIG_SENSOR_READ_ALL_CHANNELS)
-        int ret = sensor_sample_fetch_chan(dev_tandh, SENSOR_CHAN_ALL);
+        ret = sensor_sample_fetch_chan(dev_tandh, SENSOR_CHAN_ALL);
         if (ret < 0) {
             LOG_ERR("Fetch all channels failed: %d", ret);
             continue;
         }
 #else
-        int ret = sensor_sample_fetch_chan(dev_tandh, SENSOR_CHAN_AMBIENT_TEMP);
+        ret = sensor_sample_fetch_chan(dev_tandh, SENSOR_CHAN_AMBIENT_TEMP);
         if (ret < 0) {
             LOG_ERR("Get ambient temp failed: %d", ret);
             continue;
