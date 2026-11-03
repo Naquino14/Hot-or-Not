@@ -57,7 +57,7 @@ int hon_tls_init() {
         CA_CERTIFICATE_TAG,
         TLS_CREDENTIAL_CA_CERTIFICATE,
         smtp_ca_certificate,
-        sizeof(smtp_ca_certificate) - 1
+        sizeof(smtp_ca_certificate)
     );
     if (ret < 0) {
         LOG_ERR("Could not add CA Certificate to TLS system: %d", ret);
@@ -87,6 +87,7 @@ int hon_tls_socket_cfg(int sock, const char* hostname) {
     if (ret < 0) {
         ret = -errno;
         LOG_ERR("Failed to configure TLS credentials for %s on socket %d: %d", hostname, sock, ret);
+        zsock_close(sock);
         return ret;
     }
 
@@ -101,6 +102,7 @@ int hon_tls_socket_cfg(int sock, const char* hostname) {
     if (ret < 0) {
         ret = -errno;
         LOG_ERR("Failed to configure TLS peer verification for %s on socket %d: %d", hostname, sock, ret);
+        zsock_close(sock);
         return ret;
     }
 
@@ -114,6 +116,7 @@ int hon_tls_socket_cfg(int sock, const char* hostname) {
     if (ret < 0) {
         ret = -errno;
         LOG_ERR("Failed to configure TLS hostname for %s on socket %d: %d", hostname, sock, ret);
+        zsock_close(sock);
         return ret;
     }
     
