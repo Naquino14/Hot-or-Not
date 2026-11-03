@@ -65,6 +65,7 @@ int main(void) {
     LOG_INF("Hello, Carlson!");
 
     conn_mgr_init();
+    conn_mgr_enable_watchdog();
 
     // spin until connected
     int timeout_ms = WIFI_CONNECT_TIMEOUT_MS;
