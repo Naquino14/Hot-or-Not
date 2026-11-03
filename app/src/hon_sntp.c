@@ -84,9 +84,12 @@ static void sntp_service_handler(struct net_socket_service_event *evt) {
 
     sntp_close_async(&service_sntp_async);
     k_sem_give(&sntp_async_rxed_sem);
+    sntp_done = true;
 }
 
 int hon_sntp_get_time() {
+    sntp_done = false;
+
     int ret = sntp_init_async(&snmp_ctx, (const struct net_sockaddr*)&sntp_server_addr, sizeof(sntp_server_addr), &service_sntp_async);
     if (ret < 0) {
         LOG_ERR("Failed to init async SNTP ctx: %d", ret);
@@ -96,8 +99,6 @@ int hon_sntp_get_time() {
     ret = sntp_send_async(&snmp_ctx);
     if (ret < 0)
         LOG_ERR("Failed to perform async SNTP query: %d", ret);
-
-    sntp_done = false;
 
     return ret;
 }
@@ -115,6 +116,10 @@ static int cmd_resync(const struct shell *shell, size_t argc, char **argv)
 
     shell_print(shell, "SNTP resync requested");
     return 0;
+}
+
+bool hon_sntp_ok() {
+    return sntp_done;
 }
 
 SHELL_CMD_REGISTER(resync, NULL, "Request an SNTP resynchronization", cmd_resync);
