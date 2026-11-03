@@ -5,6 +5,7 @@
 #include <zephyr/net/socket.h>
 #include <zephyr/net/tls_credentials.h>
 #include <mbedtls/base64.h>
+#include <time.h>
 
 #include "tls/hon_tls.h"
 
@@ -19,7 +20,7 @@ static bool rdy;
 #define ISNT_DIGIT(c) (c < '0' || c > '9')
 #define TO_DIGIT(c) (c - '0')
 
-#define CMDBUF_SIZE 256
+#define CMDBUF_SIZE 512
 
 static int smtp_send_all(int sock, const char* data, size_t len) {
     size_t off = 0;
@@ -226,6 +227,82 @@ int smtp_client_send(const smtp_mail_t* mail) {
         return ret;
     } else
         LOG_INF("AUTH OK");
+
+    // send email
+    // mail from
+    len = snprintf(command, sizeof(command), "MAIL FROM:<%s>\r\n", CONFIG_SMTP_USERNAME);
+    ret = smtp_send_all(sock, command, len);
+    if (ret < 0) {
+        LOG_ERR("Failed to send MAIL FROM: %d", ret);
+        zsock_close(sock);
+        return ret;
+    }
+
+    ret = smtp_read_resp(sock, 250, &actual_code);
+    if (ret < 0 && actual_code != 251) {
+        LOG_ERR("MAIL FROM failed: %d (code %d)", ret, actual_code);
+        zsock_close(sock);
+        return ret;
+    }
+
+    // receipt to
+    len = snprintf(command, sizeof(command), "RCPT TO:<%s>\r\n", mail->to);
+    ret = smtp_send_all(sock, command, len);
+    if (ret < 0) {
+        LOG_ERR("Failed to send RCPT TO: %d", ret);
+        zsock_close(sock);
+        return ret;
+    }
+
+    ret = smtp_read_resp(sock, 250, &actual_code);
+    if (ret < 0 && actual_code != 251) {
+        LOG_ERR("RCPT TO failed: %d (code %d)", ret, actual_code);
+        zsock_close(sock);
+        return ret;
+    }
+
+    // send body
+    len = snprintf(command, sizeof(command), "DATA\r\n");
+    ret = smtp_send_all(sock, command, len);
+    if (ret < 0) {
+        LOG_ERR("Failed to send DATA: %d", ret);
+        zsock_close(sock);
+        return ret;
+    }
+
+    ret = smtp_read_resp(sock, 354, &actual_code);
+    if (ret < 0) {
+        LOG_ERR("DATA failed: %d (code %d)", ret, actual_code);
+        zsock_close(sock);
+        return ret;
+    }
+
+    // gmail does not require the time or ID parameters therefore they are not implemented here to save time
+    const char* body_format = "From: %s\r\nTo: %s\r\nSubject: %s\r\n\r\n%s\r\n.\r\n";
+    
+    len = snprintf(command, sizeof(command), body_format,
+        CONFIG_SMTP_USERNAME,
+        mail->to,
+        mail->subject,
+        mail->body);
+    if (len < 0 || len >= sizeof(command)) {
+        LOG_ERR("Email too large: %d chars", len);
+        zsock_close(sock);
+        return -EINVAL;
+    }
+    ret = smtp_send_all(sock, command, len);
+    if (ret < 0) {
+        LOG_ERR("Failed to send DATA: %d", ret);
+        zsock_close(sock);
+        return ret;
+    }
+
+    ret = smtp_read_resp(sock, 250, &actual_code);
+    if (ret < 0 && actual_code != 251) {
+        LOG_ERR("DATA body failed: %d (code %d)", ret, actual_code);
+        zsock_close(sock);
+        return ret;
+    }
 
     len = snprintf(command, sizeof(command), "QUIT\r\n");
     ret = smtp_send_all(sock, command, len);

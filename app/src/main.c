@@ -154,9 +154,9 @@ int main(void) {
 
     // dummy mail while testing hello
     const smtp_mail_t mail = {
-        .body = "",
+        .body = "Testing testing 123",
         .to = "help@cis.rit.edu",
-        .subject = "hi"
+        .subject = "Hello from ESP32"
     };
     ret = smtp_client_send(&mail);
     if (ret < 0) {
