@@ -90,6 +90,40 @@ static int smtp_read_resp(int sock, int expect_code, int* actual_code) {
     }
 }
 
+static int smtp_command(int sock, char* command, size_t buf_size, int expected_code, const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    int len = vsnprintf(command, buf_size, format, args);
+    va_end(args);
+
+    if (len < 0)
+        return -EIO;
+    if ((size_t)len >= buf_size) {
+        LOG_ERR("command \"%.5s...\" too large: %d chars", command, len);
+        return -E2BIG;
+    }
+
+
+    int ret = smtp_send_all(sock, command, (size_t)len);
+    if (ret < 0) {
+        LOG_ERR("Failed to send command \"%.5s%s\": %d", command, len > 5 ? "..." : "", ret);
+        return ret;
+    }
+
+    int actual_code = 0;
+    ret = smtp_read_resp(sock, expected_code, &actual_code);
+    if (ret == -EIO) {
+        LOG_WRN("SMTP server replied to command \"%.5s%s\" with unexpected code: %d (expected %d)", 
+            command, len > 5 ? "..." : "", 
+            actual_code, expected_code);
+    } else if (ret < 0) {
+        LOG_ERR("Error reading response: %d", ret);
+        return ret;
+    }
+
+    return actual_code;
+}
+
 #define BASE64_LEN(len) (((len + 2) / 3) * 4 + 1)
 static int smtp_auth_plain(int sock, char cmd_buf[CMDBUF_SIZE]) {
     const size_t uname_len = sizeof(CONFIG_SMTP_USERNAME) - 1;
@@ -170,21 +204,20 @@ int smtp_client_send(const smtp_mail_t* mail) {
     if (sock < 0) {
         ret = -errno;
         LOG_ERR("Failed to create TLS socket: %d", ret);
-        return ret;
+        goto cleanup;
     }
 
     ret = hon_tls_socket_cfg(sock, smtp_server_hostname);
     if (ret < 0 || !hon_tls_rdy()) {
         LOG_ERR("HON TLS not ready or not configured: %d", ret);
-        return ret;
+        goto cleanup;
     }
     
     ret = zsock_connect(sock, (struct sockaddr*) &smtp_server, sizeof(smtp_server));
     if (ret < 0) {
         ret = -errno;
         LOG_ERR("Failed to connect to SMTP server: %d", ret);
-        zsock_close(sock);
-        return ret;
+        goto cleanup;
     }
 
     int actual_code;
@@ -193,133 +226,50 @@ int smtp_client_send(const smtp_mail_t* mail) {
     ret = smtp_read_resp(sock, 220, &actual_code);
     if (ret < 0) {
         LOG_ERR("Invalid SMTP greeting: %d (code %d)", ret, actual_code);
-        zsock_close(sock);
-        return ret;
+        goto cleanup;
     }
 
     char command[CMDBUF_SIZE];
-    int len = snprintf(command, sizeof(command), "EHLO %s\r\n", smtp_server_hostname);
-    if (len < 0 || len >= sizeof(command)) {
-        LOG_ERR("EHLO command too large?");
-        zsock_close(sock);
-        return -EINVAL;
-    }
 
-    ret = smtp_send_all(sock, command, len);
-    if (ret < 0) {
-        LOG_ERR("Failed to send EHLO: %d", ret);
-        zsock_close(sock);
-        return -EINVAL;
-    }
-
-    // expect 250
-    ret = smtp_read_resp(sock, 250, &actual_code);
-    if (ret < 0) {
-        LOG_ERR("EHLO Failed: %d (code %d)", ret, actual_code);
-        zsock_close(sock);
-        return ret;
-    }
+    ret = smtp_command(sock, command, sizeof(command), 250, "EHLO %s\r\n", smtp_server_hostname);
+    if (ret < 0)
+        goto cleanup;
 
     // auth. let auth borrow our buffer
     ret = smtp_auth_plain(sock, command);
-    if (ret < 0) {
-        zsock_close(sock);        
-        return ret;
-    } else
-        LOG_INF("AUTH OK");
+    if (ret < 0)
+        goto cleanup;
 
     // send email
     // mail from
-    len = snprintf(command, sizeof(command), "MAIL FROM:<%s>\r\n", CONFIG_SMTP_USERNAME);
-    ret = smtp_send_all(sock, command, len);
-    if (ret < 0) {
-        LOG_ERR("Failed to send MAIL FROM: %d", ret);
-        zsock_close(sock);
-        return ret;
-    }
-
-    ret = smtp_read_resp(sock, 250, &actual_code);
-    if (ret < 0 && actual_code != 251) {
-        LOG_ERR("MAIL FROM failed: %d (code %d)", ret, actual_code);
-        zsock_close(sock);
-        return ret;
-    }
+    ret = smtp_command(sock, command, sizeof(command), 250, "MAIL FROM:<%s>\r\n", CONFIG_SMTP_USERNAME);
+    if (ret < 0 && ret != 251) 
+        goto cleanup;
 
     // receipt to
-    len = snprintf(command, sizeof(command), "RCPT TO:<%s>\r\n", mail->to);
-    ret = smtp_send_all(sock, command, len);
-    if (ret < 0) {
-        LOG_ERR("Failed to send RCPT TO: %d", ret);
-        zsock_close(sock);
-        return ret;
-    }
-
-    ret = smtp_read_resp(sock, 250, &actual_code);
-    if (ret < 0 && actual_code != 251) {
-        LOG_ERR("RCPT TO failed: %d (code %d)", ret, actual_code);
-        zsock_close(sock);
-        return ret;
-    }
+    ret = smtp_command(sock, command, sizeof(command), 250, "RCPT TO:<%s>\r\n", mail->to);
+    if (ret < 0 && actual_code != 251)
+        goto cleanup; 
 
     // send body
-    len = snprintf(command, sizeof(command), "DATA\r\n");
-    ret = smtp_send_all(sock, command, len);
-    if (ret < 0) {
-        LOG_ERR("Failed to send DATA: %d", ret);
-        zsock_close(sock);
-        return ret;
-    }
-
-    ret = smtp_read_resp(sock, 354, &actual_code);
-    if (ret < 0) {
-        LOG_ERR("DATA failed: %d (code %d)", ret, actual_code);
-        zsock_close(sock);
-        return ret;
-    }
+    ret = smtp_command(sock, command, sizeof(command), 354, "DATA\r\n");
+    if (ret < 0)
+        goto cleanup;
 
     // gmail does not require the time or ID parameters therefore they are not implemented here to save time
     const char* body_format = "From: %s\r\nTo: %s\r\nSubject: %s\r\n\r\n%s\r\n.\r\n";
-    
-    len = snprintf(command, sizeof(command), body_format,
+    ret = smtp_command(sock, command, sizeof(command), 250, body_format, 
         CONFIG_SMTP_USERNAME,
         mail->to,
         mail->subject,
         mail->body);
-    if (len < 0 || len >= sizeof(command)) {
-        LOG_ERR("Email too large: %d chars", len);
-        zsock_close(sock);
-        return -EINVAL;
-    }
-    ret = smtp_send_all(sock, command, len);
-    if (ret < 0) {
-        LOG_ERR("Failed to send DATA: %d", ret);
-        zsock_close(sock);
-        return ret;
-    }
+    if (ret < 0 && ret != 251)
+        goto cleanup;
 
-    ret = smtp_read_resp(sock, 250, &actual_code);
-    if (ret < 0 && actual_code != 251) {
-        LOG_ERR("DATA body failed: %d (code %d)", ret, actual_code);
-        zsock_close(sock);
-        return ret;
-    }
+    ret = smtp_command(sock, command, sizeof(command), 221, "QUIT\r\n");
 
-    len = snprintf(command, sizeof(command), "QUIT\r\n");
-    ret = smtp_send_all(sock, command, len);
-    if (ret < 0) {
-        LOG_ERR("Failed to send QUIT: %d", ret);
+cleanup:
+    if (sock >= 0)
         zsock_close(sock);
-        return ret;
-    }
-
-    // quit is 221
-    ret = smtp_read_resp(sock, 221, &actual_code);
-    if (ret < 0) {
-        LOG_ERR("QUIT failed: %d (code %d)", ret,  actual_code);
-        zsock_close(sock);
-        return ret;
-    }
-
-    zsock_close(sock);
-    return 0;
+    return ret;
 }
