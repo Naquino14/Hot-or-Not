@@ -175,15 +175,9 @@ int main(void) {
     } else 
         LOG_INF("TLS Started");
 
-    // dummy mail while testing hello
-    const smtp_mail_t mail = {
-        .body = "Testing testing 123\r\nThis is a test of the refactored SMTP client\r\tSorry for email spam - Nate",
-        .to = "help@cis.rit.edu",
-        .subject = "Hello from ESP32 | Code refactored"
-    };
-    ret = smtp_client_send(&mail);
+    ret = smtp_client_hello_auth();
     if (ret < 0) {
-        LOG_ERR("Shits fucked: %d", ret);
+        LOG_ERR("SMTP hello and auth failed");
         return 1;
     }
 

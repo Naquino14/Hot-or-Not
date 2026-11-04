@@ -273,3 +273,58 @@ cleanup:
         zsock_close(sock);
     return ret;
 }
+
+int smtp_client_hello_auth() {
+    if (smtp_server.sin_family == 0 || !rdy) {
+        LOG_ERR("SMTP Server IP Address is not set.");
+        return -EADDRNOTAVAIL;
+    }
+
+    int ret;
+    int sock = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TLS_1_2);
+    if (sock < 0) {
+        ret = -errno;
+        LOG_ERR("Failed to create TLS socket: %d", ret);
+        goto cleanup;
+    }
+
+    ret = hon_tls_socket_cfg(sock, smtp_server_hostname);
+    if (ret < 0 || !hon_tls_rdy()) {
+        LOG_ERR("HON TLS not ready or not configured: %d", ret);
+        goto cleanup;
+    }
+    
+    ret = zsock_connect(sock, (struct sockaddr*) &smtp_server, sizeof(smtp_server));
+    if (ret < 0) {
+        ret = -errno;
+        LOG_ERR("Failed to connect to SMTP server: %d", ret);
+        goto cleanup;
+    }
+
+    int actual_code;
+
+    // send hello for now
+    ret = smtp_read_resp(sock, 220, &actual_code);
+    if (ret < 0) {
+        LOG_ERR("Invalid SMTP greeting: %d (code %d)", ret, actual_code);
+        goto cleanup;
+    }
+
+    char command[CMDBUF_SIZE];
+
+    ret = smtp_command(sock, command, sizeof(command), 250, "EHLO %s\r\n", smtp_server_hostname);
+    if (ret < 0)
+        goto cleanup;
+
+    // auth. let auth borrow our buffer
+    ret = smtp_auth_plain(sock, command);
+    if (ret < 0)
+        goto cleanup;
+
+    ret = smtp_command(sock, command, sizeof(command), 221, "QUIT\r\n");
+
+cleanup:
+    if (sock >= 0)
+        zsock_close(sock);
+    return ret;
+}
