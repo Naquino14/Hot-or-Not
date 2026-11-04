@@ -18,8 +18,12 @@ LOG_MODULE_REGISTER(main);
 const struct device* dev_tandh = DEVICE_DT_GET(TANDH_NODE);
 
 // ping callback
-static bool inet_ok = false;
+static volatile bool ping_done;
+static volatile bool inet_ok;
+
 void ping_cb(int code) {
+    ping_done = true;
+
     if (code == 0) {
         LOG_INF("Ping successful!");
         inet_ok = true;
@@ -65,7 +69,6 @@ int main(void) {
     LOG_INF("Hello, Carlson!");
 
     conn_mgr_init();
-    conn_mgr_enable_watchdog();
 
     // spin until connected
     int timeout_ms = WIFI_CONNECT_TIMEOUT_MS;
@@ -86,6 +89,8 @@ int main(void) {
         return -1;
     }
 
+    conn_mgr_enable_watchdog();
+
     // spin until we get dns resolution
     timeout_ms = DNS_QUERY_TIMEOUT_MS;
     max_retries = DNS_QUERY_MAX_RETRIES;
@@ -102,11 +107,28 @@ int main(void) {
     }
 
     // ping the resolved IP
-    attempt = 0; // reset attempt counter
+    attempt = 0;
     while (!inet_ok && attempt < max_retries) {
-        LOG_INF("Pinging %s... (attempt %d/%d)", found_ip, attempt + 1, max_retries);
-        conn_mgr_ping_host(found_ip, ping_cb);
-        k_msleep(timeout_ms / max_retries);
+        ping_done = false;
+
+        LOG_INF("Pinging %s... (attempt %d/%d)",
+                found_ip, attempt + 1, max_retries);
+
+        int ret = conn_mgr_ping_host(found_ip, ping_cb);
+        if (ret < 0) {
+            LOG_ERR("Could not start ping: %d", ret);
+            break;
+        }
+
+        int elapsed = 0;
+        while (!ping_done && elapsed < timeout_ms) {
+            k_msleep(100);
+            elapsed += 100;
+        }
+
+        if (!ping_done)
+            LOG_WRN("Ping timed out waiting for callback");
+
         attempt++;
     }
 
@@ -155,9 +177,9 @@ int main(void) {
 
     // dummy mail while testing hello
     const smtp_mail_t mail = {
-        .body = "Testing testing 123",
+        .body = "Testing testing 123\r\nThis is a test of the refactored SMTP client\r\tSorry for email spam - Nate",
         .to = "help@cis.rit.edu",
-        .subject = "Hello from ESP32"
+        .subject = "Hello from ESP32 | Code refactored"
     };
     ret = smtp_client_send(&mail);
     if (ret < 0) {
