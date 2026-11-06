@@ -7,6 +7,10 @@
 
 #include <conn_mgr.h>
 
+#include "smtp_client.h"
+#include "hon_sntp.h"
+#include "tls/hon_tls.h"
+
 LOG_MODULE_REGISTER(main);
 
 // get am2320 device
@@ -14,8 +18,12 @@ LOG_MODULE_REGISTER(main);
 const struct device* dev_tandh = DEVICE_DT_GET(TANDH_NODE);
 
 // ping callback
-static bool inet_ok = false;
+static volatile bool ping_done;
+static volatile bool inet_ok;
+
 void ping_cb(int code) {
+    ping_done = true;
+
     if (code == 0) {
         LOG_INF("Ping successful!");
         inet_ok = true;
@@ -45,6 +53,17 @@ void query_cb(char* resolved_ip) {
         LOG_WRN("Ignoring duplicate DNS response.");
 }
 
+/// TODO: Turn this into a thread
+#define SNTP_RESYNC_PERIOD K_HOURS(24)
+static struct k_work_delayable sntp_resync_dwork;
+static void sntp_resync_handler(struct k_work* work) {
+    int ret = hon_sntp_get_time();
+    if (ret < 0) 
+        LOG_ERR("RESYNC FAILED: (%d)! TOO BAD!", ret);
+        
+    k_work_reschedule(&sntp_resync_dwork, SNTP_RESYNC_PERIOD);
+}
+
 int main(void) {
     k_msleep(500);
     LOG_INF("Hello, Carlson!");
@@ -70,27 +89,46 @@ int main(void) {
         return -1;
     }
 
+    conn_mgr_enable_watchdog();
+
     // spin until we get dns resolution
     timeout_ms = DNS_QUERY_TIMEOUT_MS;
     max_retries = DNS_QUERY_MAX_RETRIES;
     attempt = 0; // reset attempt counter
     while (!dns_query_ok && attempt < max_retries) {
-        LOG_INF("Performing DNS query... (attempt %d/%d)", attempt + 1, max_retries);
-        conn_mgr_dns_query("google.com", query_cb);
+        LOG_INF("Performing DNS query of %s... (attempt %d/%d)", CONFIG_SMTP_SERVER, attempt + 1, max_retries);
+        conn_mgr_dns_query(CONFIG_SMTP_SERVER, query_cb);
         k_msleep(timeout_ms / max_retries);
         attempt++;
     }
     if (!dns_query_ok) {
-        LOG_ERR("Could not resolve DNS after %d attempts, aborting tests.", max_retries);
+        LOG_ERR("Could not resolve IP for %s after %d attempts, aborting tests.", CONFIG_SMTP_SERVER, max_retries);
         return -1;
     }
 
     // ping the resolved IP
-    attempt = 0; // reset attempt counter
+    attempt = 0;
     while (!inet_ok && attempt < max_retries) {
-        LOG_INF("Pinging %s... (attempt %d/%d)", found_ip, attempt + 1, max_retries);
-        conn_mgr_ping_host(found_ip, ping_cb);
-        k_msleep(timeout_ms / max_retries);
+        ping_done = false;
+
+        LOG_INF("Pinging %s... (attempt %d/%d)",
+                found_ip, attempt + 1, max_retries);
+
+        int ret = conn_mgr_ping_host(found_ip, ping_cb);
+        if (ret < 0) {
+            LOG_ERR("Could not start ping: %d", ret);
+            break;
+        }
+
+        int elapsed = 0;
+        while (!ping_done && elapsed < timeout_ms) {
+            k_msleep(100);
+            elapsed += 100;
+        }
+
+        if (!ping_done)
+            LOG_WRN("Ping timed out waiting for callback");
+
         attempt++;
     }
 
@@ -99,7 +137,51 @@ int main(void) {
         return -1;
     }
 
-    LOG_INF("Network tests OK");
+    // set smtp address
+    smtp_set_server_ipaddr(found_ip, CONFIG_SMTP_SERVER);
+
+    // get sntp address
+    attempt = 0; // reset attempt counter
+    dns_query_ok = false; // reset ok flag
+    while (!dns_query_ok && attempt < max_retries) {
+        LOG_INF("Performing DNS query of %s... (attempt %d/%d)", CONFIG_SNTP_SERVER, attempt + 1, max_retries);
+        conn_mgr_dns_query(CONFIG_SNTP_SERVER, query_cb);
+        k_msleep(timeout_ms / max_retries);
+        attempt++;
+    }
+        if (!dns_query_ok) {
+        LOG_ERR("Could not resolve IP for %s after %d attempts, aborting tests.", CONFIG_SNTP_SERVER, max_retries);
+        return -1;
+    }
+
+    hon_sntp_set_server_ipaddr(found_ip);
+
+    // enable sntp timer, run once now and do every 24 hours
+    k_work_init_delayable(&sntp_resync_dwork, sntp_resync_handler);
+    k_work_reschedule(&sntp_resync_dwork, K_NO_WAIT);
+
+    LOG_INF("Waiting for first-time time sync...");
+    while (!hon_sntp_ok())
+        k_msleep(100);
+
+    LOG_INF("Network tests OK, starting SMTP test");
+
+    k_msleep(1000);
+
+    int ret = hon_tls_init();
+    if (ret < 0) {
+        LOG_ERR("Failed to start TLS");
+        return 1;
+    } else 
+        LOG_INF("TLS Started");
+
+    ret = smtp_client_hello_auth();
+    if (ret < 0) {
+        LOG_ERR("SMTP hello and auth failed");
+        return 1;
+    }
+
+    LOG_INF("SMTP tests OK");
     
     if (!device_is_ready(dev_tandh)) {
         LOG_ERR("Ah breh ts dont work");
@@ -115,13 +197,13 @@ int main(void) {
         k_sleep(K_SECONDS(CONFIG_SENSOR_SAMPLE_RATE));
 
 #if defined(CONFIG_SENSOR_READ_ALL_CHANNELS)
-        int ret = sensor_sample_fetch_chan(dev_tandh, SENSOR_CHAN_ALL);
+        ret = sensor_sample_fetch_chan(dev_tandh, SENSOR_CHAN_ALL);
         if (ret < 0) {
             LOG_ERR("Fetch all channels failed: %d", ret);
             continue;
         }
 #else
-        int ret = sensor_sample_fetch_chan(dev_tandh, SENSOR_CHAN_AMBIENT_TEMP);
+        ret = sensor_sample_fetch_chan(dev_tandh, SENSOR_CHAN_AMBIENT_TEMP);
         if (ret < 0) {
             LOG_ERR("Get ambient temp failed: %d", ret);
             continue;
