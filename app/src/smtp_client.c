@@ -158,7 +158,7 @@ static int smtp_auth_plain(int sock, char cmd_buf[CMDBUF_SIZE]) {
         return ret;
     }
 
-    int actual_code;
+    int actual_code = 0;
     ret = smtp_read_resp(sock, 235, &actual_code);
     if (ret < 0) {
         LOG_ERR("SMTP auth failed: %d (code %d)", ret, actual_code);
@@ -220,7 +220,7 @@ int smtp_client_send(const smtp_mail_t* mail) {
         goto cleanup;
     }
 
-    int actual_code;
+    int actual_code = 0;
 
     // send hello for now
     ret = smtp_read_resp(sock, 220, &actual_code);
@@ -301,7 +301,7 @@ int smtp_client_hello_auth() {
         goto cleanup;
     }
 
-    int actual_code;
+    int actual_code = 0;
 
     // send hello for now
     ret = smtp_read_resp(sock, 220, &actual_code);
