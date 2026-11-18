@@ -130,8 +130,12 @@ int main(void) {
             elapsed += 100;
         }
 
-        if (!ping_done)
-            LOG_WRN("Ping timed out waiting for callback");
+        if (!ping_done) {
+            LOG_WRN("Ping timed out waiting for callback, retrying...");
+            ret = conn_mgr_ping_cancel();
+            if (ret < 0 && ret != -ESTALE) 
+                LOG_ERR("Could not cancel ping: %d", ret);
+        }
 
         attempt++;
     }
