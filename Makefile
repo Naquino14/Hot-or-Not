@@ -3,13 +3,15 @@ BAUDRATE := 115200
 
 export BOARD := esp32_devkitc/esp32/procpu
 export DTC_OVERLAY_FILE := $(CWD)/app/boards/esp32_devkitc.overlay
-export SECRETS_FILE := $(CWD)/app/secrets.conf
+export CONFIGS := $(CWD)/app/secrets.conf \
+				$(CWD)/app/smtp.secrets.conf \
+				$(CWD)/app/overlay-tls.conf
 
 target:
-	west build -b $(BOARD) -s app -p auto -- -DEXTRA_CONF_FILE=$(SECRETS_FILE)
+	west build -b $(BOARD) -s app -p auto -- -DEXTRA_CONF_FILE="$(foreach exconf,$(CONFIGS),;$(exconf))"
 
 doctor:
-	west build -b $(BOARD) -s app -p auto -- -DEXTRA_CONF_FILE=$(SECRETS_FILE) -DZEPHYR_SCA_VARIANT=dtdoctor
+	west build -b $(BOARD) -s app -p auto -- -DEXTRA_CONF_FILE="$(foreach exconf,$(CONFIGS),;$(exconf))" -DZEPHYR_SCA_VARIANT=dtdoctor
 
 flash:
 	west flash --esp-device /dev/ttyUSB0
@@ -28,4 +30,5 @@ show:
 	@echo "Board: $(BOARD)"
 	@echo "Baudrate: $(BAUDRATE)"
 	@echo "DTC Overlay File: $(DTC_OVERLAY_FILE)"
+	@echo "extra config files: $(foreach exconf,$(CONFIGS),;$(exconf))"
 	@echo "-----------------------------------"
