@@ -69,7 +69,8 @@ static int smtp_read_resp(int sock, int expect_code, int* actual_code) {
             ISNT_DIGIT(line[0]) ||
             ISNT_DIGIT(line[1]) ||
             ISNT_DIGIT(line[2]) ||
-            (line[3] != ' ' && line[3] != '-'))
+            (line[3] != ' ' && line[3] != '-') ||
+            (line[len - 1] != '\n' && line[len - 2] != '\r')) {
             return -EPROTO;
         
         int code = (TO_DIGIT(line[0]) * 100 + TO_DIGIT(line[1]) * 10 + TO_DIGIT(line[2]));
