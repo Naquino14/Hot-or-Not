@@ -21,7 +21,7 @@ string(REGEX REPLACE ".*\"([^\"]+)\".*" "\\1" CA_PEM_FILENAME "${CONFIG_LINE}")
 set(CA_PEM_INC_FILENAME "${CA_PEM_FILENAME}.inc")
 
 # make it a compile definition to include it down the line
-add_compile_definitions(app PRIVATE CA_PEM_INC_FILENAME="${CA_PEM_INC_FILENAME}")
+target_compile_definitions(app PRIVATE CA_PEM_INC_FILENAME="${CA_PEM_INC_FILENAME}")
 
 generate_inc_file_for_target(app
     src/tls/${CA_PEM_FILENAME}
