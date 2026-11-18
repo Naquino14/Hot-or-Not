@@ -54,7 +54,7 @@ static void sntp_service_handler(struct net_socket_service_event *evt) {
     if (sntp_done)
         return;
 
-    sntp_done = true;
+    sntp_done = false;
     
     struct sntp_time new_time;
     int ret = sntp_read_async(evt, &new_time);
