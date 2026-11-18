@@ -37,6 +37,9 @@ void ping_cb(int code) {
 #define DNS_QUERY_TIMEOUT_MS 12000
 #define DNS_QUERY_MAX_RETRIES 5
 
+#define SNTP_QUERY_TIMEOUT_MS 6000
+#define SNTP_QUERY_MAX_RETRIES 3
+
 #define WIFI_CONNECT_TIMEOUT_MS 10000
 #define WIFI_CONNECT_MAX_RETRIES 3
 
@@ -57,6 +60,7 @@ void query_cb(char* resolved_ip) {
 #define SNTP_RESYNC_PERIOD K_HOURS(24)
 static struct k_work_delayable sntp_resync_dwork;
 static void sntp_resync_handler(struct k_work* work) {
+    ARG_UNUSED(work);
     int ret = hon_sntp_get_time();
     if (ret < 0) 
         LOG_ERR("RESYNC FAILED: (%d)! TOO BAD!", ret);
@@ -156,13 +160,44 @@ int main(void) {
 
     hon_sntp_set_server_ipaddr(found_ip);
 
-    // enable sntp timer, run once now and do every 24 hours
-    k_work_init_delayable(&sntp_resync_dwork, sntp_resync_handler);
-    k_work_reschedule(&sntp_resync_dwork, K_NO_WAIT);
+    // first time sntp sync
 
+    attempt = 0;
+    max_retries = SNTP_QUERY_MAX_RETRIES;
     LOG_INF("Waiting for first-time time sync...");
-    while (!hon_sntp_ok())
-        k_msleep(100);
+    
+    bool synced = false;
+
+    for (int attempt = 0; attempt < SNTP_QUERY_MAX_RETRIES; attempt++) {
+        int ret = hon_sntp_get_time();
+        if (ret < 0) {
+            LOG_WRN("SNTP request failed: %d", ret);
+            continue;
+        }
+
+        int elapsed = 0;
+        while (!hon_sntp_ok() && elapsed < SNTP_QUERY_TIMEOUT_MS) {
+            k_msleep(100);
+            elapsed += 100;
+        }
+
+        if (hon_sntp_ok()) {
+            synced = true;
+            break;
+        }
+
+        hon_sntp_cancel();
+    }
+
+    if (!synced) {
+        LOG_ERR("SNTP synchronization failed after %d attempts",
+                SNTP_QUERY_MAX_RETRIES);
+        return -1;
+    }
+
+    // reschedule the SNTP resync work every 24 hr
+    k_work_init_delayable(&sntp_resync_dwork, sntp_resync_handler);
+    k_work_reschedule(&sntp_resync_dwork, K_HOURS(24));
 
     LOG_INF("Network tests OK, starting SMTP test");
 

@@ -103,6 +103,11 @@ int hon_sntp_get_time() {
     return ret;
 }
 
+void hon_sntp_cancel() {
+    sntp_close_async(&service_sntp_async);
+    k_sem_give(&sntp_async_rxed_sem);
+}
+
 static int cmd_resync(const struct shell *shell, size_t argc, char **argv)
 {
     ARG_UNUSED(argc);
