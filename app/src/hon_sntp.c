@@ -41,15 +41,11 @@ static long frac_to_adj_nsec(uint32_t fraction, uint32_t delay_us) {
     int64_t adj_nsec = (int64_t)nsec - ((int64_t)delay_us * 1000);
     long fin_nsec = (long)adj_nsec;
     
-    while (fin_nsec < 0) {
-        fin_nsec--;
+    while (fin_nsec < 0) 
         fin_nsec += billion;
-    }
 
-    while (fin_nsec >= billion) {
-        fin_nsec++;
+    while (fin_nsec >= billion)
         fin_nsec -= billion;
-    }
 
     return fin_nsec;
 }
