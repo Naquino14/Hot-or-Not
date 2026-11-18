@@ -40,7 +40,7 @@ static int smtp_send_all(int sock, const char* data, size_t len) {
     return 0;
 }
 
-#define MAX_LINE 128
+#define MAX_LINE 512
 static int smtp_read_resp(int sock, int expect_code, int* actual_code) {
     char line[MAX_LINE];
     int first_code = -1;
